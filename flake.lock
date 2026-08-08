@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "beads": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786202807,
+        "narHash": "sha256-p9DHSJKtBKvl7en+ZDNsxWibpCl1Nd7XhA7cvTEp3Ec=",
+        "owner": "punt-labs",
+        "repo": "beads",
+        "rev": "be6b7cb42c01dfe4c1fe244715865d4dd83eb327",
+        "type": "github"
+      },
+      "original": {
+        "owner": "punt-labs",
+        "ref": "factory-fixes",
+        "repo": "beads",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1785975029,
+        "narHash": "sha256-7UJK0pRtDvDUfAMLP1bQDxXg6iDI30dGQQQCPtQVzgM=",
+        "rev": "70ce234312134a463ba7728e94da2486a1d237ac",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixpkgs/nixpkgs-26.11pre1048658.70ce23431213/nixexprs.tar.xz"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixpkgs-unstable",
+        "type": "indirect"
+      }
+    },
+    "root": {
+      "inputs": {
+        "beads": "beads",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

@@ -1,0 +1,17 @@
+# bd 1.0.x server-mode config for this repo.
+#
+# Connection details come from environment variables plus central user config.
+# They are not stored here so this repo stays portable across machines and
+# credential rotations.
+#
+# Issue prefix lives in .beads/metadata.json.
+
+directory:
+  labels:
+    circuit: repo:circ
+
+backup:
+  enabled: false
+export:
+  auto: false
+  git-add: false

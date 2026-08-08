@@ -1,0 +1,42 @@
+# bd 1.0.x server-mode setup. Source of truth lives in central Hosted DoltDB.
+# Local-only files: never tracked.
+
+# Auto-export views
+issues.jsonl
+interactions.jsonl
+
+# Embedded/local stores
+embeddeddolt/
+backup/
+*.corrupt.backup/
+export-state.json
+last-touched
+.local_version
+
+# Legacy SQLite cache files
+db.sqlite
+bd.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Sync state
+.sync.lock
+sync_base.jsonl
+redirect
+
+# Merge artifacts
+beads.base.jsonl
+beads.base.meta.json
+beads.left.jsonl
+beads.left.meta.json
+beads.right.jsonl
+beads.right.meta.json
+
+# Daemon runtime
+daemon.lock
+daemon.log
+daemon.pid
+bd.sock
+sync-state.json

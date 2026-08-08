@@ -1,0 +1,15 @@
+# Build artifacts
+/circuit
+dist/
+coverage.out
+
+# Scratch/temp directory
+.tmp/
+
+# Local environment overrides
+.envrc.local
+
+# Beads runtime artifacts are ignored by .beads/.gitignore
+
+# IDE
+.idea/
