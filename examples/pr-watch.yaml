@@ -1,0 +1,43 @@
+name: pr-watch
+description: Minimal PR watch loop example for circuit validation.
+instance: pr-${pr}
+parameters:
+  - name: pr
+    description: Pull request number
+    required: true
+states:
+  - id: watch
+    description: Poll PR state and route to the next action.
+    poll: 5m
+    transitions:
+      - to: fixing
+        when:
+          - description: PR has failing checks or material review findings.
+            check: scripts/pr-needs-work ${pr}
+      - to: merging
+        when:
+          - description: PR checks are green and review threads are resolved.
+            check: scripts/pr-ready-to-merge ${pr}
+
+  - id: fixing
+    description: Apply fixes for the latest actionable feedback.
+    actions:
+      - id: fix-feedback
+        type: llm
+        description: Address the latest review feedback.
+        context: Read the latest review feedback and make the smallest correct fix.
+    transitions:
+      - to: watch
+
+  - id: merging
+    description: Merge the PR after the gate is clean.
+    actions:
+      - id: merge-pr
+        type: script
+        description: Merge the PR.
+        script: scripts/merge-pr ${pr}
+    transitions:
+      - to: done
+
+  - id: done
+    description: Terminal success state.
