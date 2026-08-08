@@ -6,6 +6,9 @@ coverage.out
 # Scratch/temp directory
 .tmp/
 
+# direnv
+.direnv/
+
 # Local environment overrides
 .envrc.local
 
