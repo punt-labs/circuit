@@ -36,11 +36,11 @@ func TestSummaryReadableFile(t *testing.T) {
 		t.Fatalf("summary returned error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "file:") {
-		t.Fatalf("summary output missing file line: %q", output)
+	if !strings.Contains(output, "name: sample") {
+		t.Fatalf("summary output missing name line: %q", output)
 	}
-	if !strings.Contains(output, "size:") {
-		t.Fatalf("summary output missing size line: %q", output)
+	if !strings.Contains(output, "kind: linear") {
+		t.Fatalf("summary output missing kind line: %q", output)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestUnknownCommandFails(t *testing.T) {
 func writeTempPlaybook(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "playbook.yaml")
-	content := []byte("name: sample\nsteps: []\n")
+	content := []byte("name: sample\nsteps:\n  - id: one\n    type: script\n    script: echo ok\n")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write temp playbook: %v", err)
 	}

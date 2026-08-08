@@ -1,2 +1,5 @@
 name: minimal
-steps: []
+steps:
+  - id: one
+    type: script
+    script: echo ok

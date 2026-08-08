@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/punt-labs/circuit/internal/playbook"
 )
 
 const exitUsage = 2
@@ -52,7 +54,15 @@ func (cmd command) validate(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.stdout, "valid: %s (%d bytes)\n", info.cleanPath, info.size)
+	document, err := playbook.ParseFile(info.cleanPath)
+	if err != nil {
+		return err
+	}
+	result := playbook.Validate(document)
+	if !result.OK() {
+		return result
+	}
+	fmt.Fprintf(cmd.stdout, "valid: %s\n", info.cleanPath)
 	return nil
 }
 
@@ -65,8 +75,13 @@ func (cmd command) summary(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.stdout, "file: %s\n", info.cleanPath)
-	fmt.Fprintf(cmd.stdout, "size: %d bytes\n", info.size)
+	document, err := playbook.ParseFile(info.cleanPath)
+	if err != nil {
+		return err
+	}
+	for _, line := range playbook.Summarize(document).Lines() {
+		fmt.Fprintln(cmd.stdout, line)
+	}
 	return nil
 }
 
