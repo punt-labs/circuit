@@ -8,6 +8,11 @@ This file is the harness-neutral instruction source for the `circuit` repo.
 current implementation is a prototype validator and summarizer, not a ratified
 runtime engine design.
 
+## Mandatory reading
+
+- `docs/DEVELOPMENT.md`
+- `docs/TESTING.md`
+
 ## Development rules
 
 - Do not quote blocks of code, config, command output, or error payloads in
