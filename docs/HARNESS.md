@@ -42,13 +42,13 @@ AGENTS.override.md
 Pi project resources under `.pi/` require project trust. Context files are loaded
 unless context discovery is disabled.
 
-For `circuit`, pi support should stay minimal at first:
+For `circuit`, pi support starts minimal:
 
 - use the Nix dev shell
 - use `AGENTS.md` / `CLAUDE.md` context behavior as observed
 - use tmux for visible long-running terminal monitoring
-- add a project-local pi extension only after the CLI behavior is useful enough
-  to wrap
+- load a small project-local extension from `.pi/extensions/circuit.ts`
+- expose a validation command that wraps the Go CLI
 
 ## opencode
 
@@ -72,6 +72,10 @@ With both `AGENTS.md` and `CLAUDE.md` present in `circuit`, pi loaded
 
 The same startup check warned that tmux is using `extended-keys-format xterm`;
 pi recommends `csi-u` for best modified-key handling.
+
+A later pi startup check with project approval showed the project extension
+loaded from `.pi/extensions/circuit.ts`. Running the extension command against
+`examples/pr-watch.yaml` returned a successful validation message.
 
 ## Open questions
 
