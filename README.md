@@ -111,6 +111,8 @@ Nix is a supported reproducible dev environment, not a required runtime.
 
 ## Harness testbed
 
+See [`docs/HARNESS.md`](docs/HARNESS.md) for current harness notes and open questions.
+
 `circuit` is also our smallest cross-harness test project. We will test each
 harness according to its own idioms instead of forcing Claude Code conventions
 onto the others.
