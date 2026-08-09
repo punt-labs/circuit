@@ -243,6 +243,7 @@ languages:
 - `check-engine` validates the Go engine/CLI.
 - `check-pi-extension` validates the project-local pi extension.
 - `check-docs` validates Markdown documentation.
+- `check-specs` validates formal Z design specs with fuzz and ProB.
 - `check-machines` validates B machines with ProB for development/release.
 - `check` runs the automated aggregate gate.
 
@@ -254,6 +255,8 @@ Additional targets:
 - `docs` — alias for `check-docs`
 - `format` — auto-format Go and TypeScript
 - `coverage` — show coverage summary for all tiers
+- `check-runtime-spec` — type-check the Circuit runtime Z spec with z-spec
+- `model-check-runtime-spec` — model-check the Circuit runtime Z spec with ProB
 - `smoke-pi` — pi RPC smoke test (requires pi + model API key)
 - `tools` — install development tools (golangci-lint)
 - `install` — build and install to `~/.local/bin`

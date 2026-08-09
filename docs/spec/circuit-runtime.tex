@@ -145,7 +145,23 @@ and the totalized operations.
   active' = \emptyset \\
   terminal' = \emptyset \\
   sessionMachine' = \emptyset \\
-  injected' = \emptyset
+  injected' = \emptyset \\
+  ((machines' = \emptyset \\
+    \land boolFacts' = \emptyset \\
+    \land bindings' = \emptyset \\
+    \land registry' = \emptyset) \\
+  \lor (machines' = MACH \\
+    \land boolFacts' = \{ m : MACH @ m \mapsto CHECK \} \\
+    \land bindings' = \emptyset \\
+    \land registry' = \emptyset) \\
+  \lor (machines' = MACH \\
+    \land boolFacts' = \{ m : MACH @ m \mapsto CHECK \} \\
+    \land bindings' = \{ m : MACH @ m \mapsto \{ c : CHECK @ c \mapsto c \} \} \\
+    \land registry' = \emptyset) \\
+  \lor (machines' = MACH \\
+    \land boolFacts' = \{ m : MACH @ m \mapsto CHECK \} \\
+    \land bindings' = \{ m : MACH @ m \mapsto \{ c : CHECK @ c \mapsto c \} \} \\
+    \land registry' = \{ c : CHECK @ c \mapsto implementedTrue \}))
 \end{schema}
 
 A machine is loadable when every BOOL fact has a binding, every binding points
@@ -649,35 +665,46 @@ mutations we should run as separate tiny documents or guarded ProB goals:
 \section{Verification Plan}
 % ============================================================
 
-This first draft is intended to type-check with fuzz:
+This spec type-checks through z-spec:
 
 \begin{verbatim}
-fuzz -t docs/spec/circuit-runtime.tex
+z-spec check docs/spec/circuit-runtime.tex
 \end{verbatim}
 
-The first ProB run uses one machine, one session, and one check. That scope is
-small, but it is enough to exercise every public operation branch and the
-load/scaffold/start interplay around one BOOL fact:
+The first ProB run follows the mixed-scope style used in other Punt Labs Z
+specs. The Makefile names the scope values as `RUNTIME_SPEC_MACHINES`,
+`RUNTIME_SPEC_SESSIONS`, and `RUNTIME_SPEC_CHECKS`. The default run uses two
+machines, two sessions, and two checks:
+
+\begin{itemize}
+  \item two machines exercise multiple machine configurations;
+  \item two sessions exercise implicit ambiguity and targeted operations;
+  \item two checks exercise multi-fact binding/registry coverage.
+\end{itemize}
+
+The spec has multiple intended initial configurations (unknown machine, missing
+binding, missing registry, and loadable), so ProB needs
+\texttt{MAX\_INITIALISATIONS} above the default to certify the root completely:
 
 \begin{verbatim}
 probcli docs/spec/circuit-runtime.tex -model_check \\
-  -p DEFAULT_SETSIZE 1 -p MAX_INITIALISATIONS 200
+  -card MACH 2 -card SESSION 2 -card CHECK 2 \\
+  -p MAX_INITIALISATIONS 15
 \end{verbatim}
 
 Observed result on 2026-08-09:
 
 \begin{itemize}
   \item all operations covered;
-  \item 77 states analysed;
-  \item 778 transitions fired;
+  \item 133 states analysed;
+  \item 2221 transitions fired;
   \item no counterexample found;
   \item all open states visited.
 \end{itemize}
 
-A wider two-element carrier currently requires a higher initialization budget,
-because the initial machine/check configuration is intentionally unconstrained
-so ProB can explore missing-binding and missing-registry cases. Tightening that
-scope without losing the interesting cases is follow-up work.
+The Makefile uses \texttt{z-spec check} for type-checking and direct
+\texttt{probcli} for the model-checking target because the z-spec CLI does not
+yet expose ProB's \texttt{MAX\_INITIALISATIONS} option.
 
 The next validation step is to create separate buggy variants and record the
 counterexample traces listed above.

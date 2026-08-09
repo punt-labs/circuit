@@ -14,6 +14,9 @@ make check (automated, no external deps):
   golangci-lint        Go lint
   markdownlint         docs
 
+make check-specs (automated, requires z-spec + ProB):
+  z-spec type-check + ProB model-check for formal design specs
+
 make check-machines (automated, requires ProB):
   ProB init + model-check for each .mch
 
@@ -79,6 +82,30 @@ Pi extension tests cover command parsing, routing, and context logic:
 
 Run with vitest. Coverage reported via `@vitest/coverage-v8`.
 
+## Formal design spec gate
+
+The runtime design spec is a Z model of Circuit's totalized runtime operations.
+Validate it with:
+
+```bash
+make check-specs
+```
+
+The target runs `z-spec check docs/spec/circuit-runtime.tex` and ProB
+model-checking at the bounded mixed scope recorded in the spec. The Makefile
+names each scope value so reviewers can see and override it:
+
+```text
+RUNTIME_SPEC_MACHINES=2
+RUNTIME_SPEC_SESSIONS=2
+RUNTIME_SPEC_CHECKS=2
+RUNTIME_SPEC_MAX_INITIALISATIONS=15
+```
+
+The model-check target calls `probcli` directly because z-spec does not yet
+expose ProB's `MAX_INITIALISATIONS` option, which this spec needs to certify the
+intended initial configurations completely.
+
 ## B-machine gate
 
 Every checked-in B machine passes ProB init and model-check:
@@ -122,6 +149,10 @@ Run `make coverage` to see all tier summaries.
 Before committing code changes:
 
 - `make check`
+
+Before changing formal design specs:
+
+- `make check-specs`
 
 Before changing B machines:
 

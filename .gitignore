@@ -6,6 +6,9 @@ coverage-*.out
 .pi/coverage/
 *.prob
 *.fuzz
+*.fuzz.json
+*.report.json
+*.audit.json
 .pi/node_modules/
 
 # Scratch/temp directory

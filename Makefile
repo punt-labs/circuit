@@ -3,6 +3,12 @@ LDFLAGS := -X main.version=$(VERSION)
 MARKDOWNLINT ?= markdownlint-cli2
 NPM ?= npm
 PROBCLI ?= probcli
+ZSPEC ?= z-spec
+
+RUNTIME_SPEC_MACHINES ?= 2
+RUNTIME_SPEC_SESSIONS ?= 2
+RUNTIME_SPEC_CHECKS ?= 2
+RUNTIME_SPEC_MAX_INITIALISATIONS ?= 15
 
 GOLANGCI_LINT_VERSION := v2.12.2
 GOBIN := $(shell go env GOBIN)
@@ -11,7 +17,7 @@ GOBIN := $(shell go env GOPATH)/bin
 endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
-.PHONY: help check check-engine check-pi-extension check-docs check-machines check-rpc smoke-pi lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
+.PHONY: help check check-engine check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
@@ -21,6 +27,14 @@ check: format check-engine check-rpc check-pi-extension check-docs ## Run all qu
 check-engine: lint-engine test-engine ## Validate Go engine
 
 check-rpc: test-rpc ## Validate RPC protocol logic
+
+check-specs: check-runtime-spec model-check-runtime-spec ## Validate formal design specs
+
+check-runtime-spec: ## Type-check the Circuit runtime Z spec with z-spec
+	$(ZSPEC) check docs/spec/circuit-runtime.tex
+
+model-check-runtime-spec: ## Model-check the Circuit runtime Z spec with ProB
+	$(PROBCLI) docs/spec/circuit-runtime.tex -model_check -card MACH $(RUNTIME_SPEC_MACHINES) -card SESSION $(RUNTIME_SPEC_SESSIONS) -card CHECK $(RUNTIME_SPEC_CHECKS) -p MAX_INITIALISATIONS $(RUNTIME_SPEC_MAX_INITIALISATIONS)
 
 check-machines: ## Validate B machines with ProB
 	$(PROBCLI) machines/build-job.mch -init
@@ -98,5 +112,5 @@ coverage: ## Show coverage summary for all tiers
 	$(NPM) --prefix .pi run test
 
 clean: ## Remove build artifacts
-	rm -f circuit circuit-rpc-spike coverage.out coverage-engine.out coverage-rpc.out
+	rm -f circuit circuit-rpc-spike coverage.out coverage-engine.out coverage-rpc.out docs/spec/*.fuzz
 	rm -rf dist
