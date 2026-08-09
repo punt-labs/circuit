@@ -4,9 +4,8 @@ This file is the harness-neutral instruction source for the `circuit` repo.
 
 ## Project purpose
 
-`circuit` is a tiny state-machine validator for agent workflow playbooks. The
-current implementation is a prototype validator and summarizer, not a ratified
-runtime engine design.
+`circuit` is a tiny formal state-machine engine for agent workflow loops. It
+uses B-Method abstract machines as the formal model for workflow definitions.
 
 ## Mandatory reading
 
@@ -27,6 +26,9 @@ runtime engine design.
 
 ## Current useful commands
 
-- Validate an example playbook with the CLI.
-- Summarize an example playbook with the CLI.
+- List available machines with `circuit list`.
+- Start an active circuit with `circuit start <machine>`.
+- Report active circuit status with `circuit status`.
+- Advance with `circuit advance <event>`.
 - Run the full local gate with `make check`.
+- Run the B-machine development gate with `make check-machines`.

@@ -1,7 +1,7 @@
 # Harness Notes
 
 `circuit` is Punt Labs' smallest cross-harness project. The product is a small
-state-machine playbook validator; the repo also lets us compare how pi, Claude
+state-machine engine; the repo also lets us compare how pi, Claude
 Code, and opencode consume project instructions.
 
 ## Instruction files
@@ -48,7 +48,18 @@ For `circuit`, pi support starts minimal:
 - use `AGENTS.md` / `CLAUDE.md` context behavior as observed
 - use tmux for visible long-running terminal monitoring
 - load a small project-local extension from `.pi/extensions/circuit.ts`
-- expose a validation command that wraps the Go CLI
+- expose thin commands that wrap the Go CLI and do not duplicate transition
+  logic
+
+Current extension commands:
+
+- `/circuit list` lists available machines from `machines/*.mch`.
+- `/circuit start <machine>` starts an active circuit from a named machine.
+- `/circuit status` shows active machine, current state, and enabled/blocked
+  operations for the active circuit.
+- `/circuit advance <event>` requests `Advance(event)` against the active
+  circuit and updates the active state when allowed.
+- `/circuit stop` clears the active circuit.
 
 ## opencode
 
@@ -75,7 +86,35 @@ pi recommends `csi-u` for best modified-key handling.
 
 A later pi startup check with project approval showed the project extension
 loaded from `.pi/extensions/circuit.ts`. Running the extension command against
-`examples/pr-watch.yaml` returned a successful validation message.
+
+The pi-hosted Circuit spike keeps pi as the interactive harness and delegates
+machine semantics to Go. The expected manual smoke path is:
+
+```text
+/circuit list
+/circuit start build-job
+/circuit status
+/circuit advance start
+/circuit status
+/circuit advance finish
+```
+
+The start command should show `current: idle`, `Advance(start)` enabled, and
+`Advance(finish)` blocked. After `/circuit advance start`, `/circuit status`
+should show `current: running` with `Advance(finish)` enabled. After
+`/circuit advance finish`, the active circuit reaches `done`.
+
+The precondition smoke uses `review-flow`:
+
+```text
+/circuit start review-flow
+/circuit advance requestReview
+/circuit status
+```
+
+`requestReview` runs the registered `makeCheck` command, stores the boolean in
+`makeCheckPassed`, increments its invocation count, and then lets the B machine
+accept or block the transition.
 
 ## Open questions
 

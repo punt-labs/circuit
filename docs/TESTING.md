@@ -1,18 +1,19 @@
 # Testing
 
-`circuit` tests the state-machine engine and the harness adapters at different
-levels. Keep the lower layers fast and automated; keep harness-level tests small
-and explicit.
+`circuit` tests the B-machine engine, the runtime, and the harness adapters at
+different levels. Keep the lower layers fast and automated; keep harness-level
+tests small and explicit.
 
 ## Test pyramid
 
-- Unit: pure validation and summary logic. Automated Go package tests.
-- CLI smoke: user-facing commands work on sample files. Automated Go CLI tests.
-- Example fixtures: checked-in playbooks remain valid. Automated fixture tests.
-- Nix shell: project toolchain supplies Go, Beads, and lint tools. Manual smoke.
-- Beads integration: repo uses central DoltDB with the circuit prefix. Manual
-  smoke.
-- pi extension smoke: project extension loads and validates a playbook. Manual
+- Unit: Circuit-B parser, resolver, profile validation, and evaluator.
+  Automated Go package tests.
+- Runtime: suspend/resume, check bindings, advance/block behavior. Automated Go
+  package tests.
+- CLI: user-facing commands work on sample machines. Automated Go CLI tests.
+- B-machine gate: checked-in machines pass ProB init and model-check. Requires
+  ProB; run with `make check-machines`.
+- pi extension smoke: project extension loads and runs circuit commands. Manual
   smoke in pi and tmux.
 - Cross-harness behavior: pi, Claude Code, and opencode load instructions as
   expected. Manual and documented.
@@ -24,53 +25,54 @@ Beads, pi, opencode, Claude Code, or shell commands.
 
 They cover:
 
-- YAML model parsing
-- structural validation
-- diagnostics
-- summaries
+- B-machine lexing/parsing
+- name/type resolution
+- Circuit-B profile validation
+- precondition evaluation
+- state/advance result computation
+- BOOL preconditions and check binding behavior
 
 These run as part of `make check`.
 
-## CLI smoke tests
+## Runtime tests
 
-CLI smoke tests exercise the public command layer without requiring external
-services. They verify that commands accept files, reject missing files, and emit
-expected success or error status.
+Runtime tests exercise the `circuitrun` package:
+
+- suspend/resume lifecycle
+- start/status/advance/stop
+- check binding execution
+- check registry validation
+- error paths for missing machines, malformed suspended files, and unknown
+  registry entries
+
+These run as part of `make check`.
+
+## CLI tests
+
+CLI tests exercise the public command layer without requiring external
+services. They verify that commands accept machines, reject missing machines,
+and emit expected success or error output.
 
 Current commands:
 
-- `validate`
-- `summary`
+- `list`
+- `start`
+- `status`
+- `advance`
+- `stop`
 
 These run as part of `make check`.
 
-## Example fixtures
+## B-machine gate
 
-Every checked-in example playbook should remain valid unless it is explicitly a
-negative fixture. Positive examples are covered by automated tests that run the
-same parse and validation path used by the CLI.
+Every checked-in B machine should pass ProB init and model-check. Run with:
 
-## Nix shell smoke
+```bash
+make check-machines
+```
 
-The Nix shell is the supported development environment. It should provide the
-project toolchain, including Go and Beads.
-
-This layer is currently checked manually when bootstrapping or changing the
-flake. It does not need to run in every Go test because it validates the
-development environment, not the engine.
-
-## Beads integration smoke
-
-Beads is external state backed by the Punt Labs Hosted DoltDB instance. It is not
-a unit-test dependency.
-
-Manual smoke checks should verify:
-
-- `bd` comes from the Nix shell
-- issue IDs use the `circ` prefix
-- repo scoping uses the `repo:circ` label
-
-Do not make normal tests depend on the production Beads database.
+This requires ProB (`probcli`). It is not included in `make check` because
+ProB is a development dependency, not a runtime dependency.
 
 ## pi extension smoke
 
@@ -83,8 +85,10 @@ A valid smoke run verifies:
 - pi starts from the `circuit` repo
 - project-local extension loading is approved
 - the startup view lists the circuit extension
-- the circuit validation command accepts an example playbook
-- the command returns a successful validation message
+- `/circuit list` shows available machines
+- `/circuit start build-job` starts an active circuit and reports state
+- `/circuit advance start` advances the active circuit
+- `/circuit status` reports the updated state
 
 Use tmux for visible pi sessions so the pane can be inspected and stopped.
 
