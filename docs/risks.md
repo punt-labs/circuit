@@ -65,6 +65,15 @@ reports "blocked" and stops.
 Risk: real workflows stall and the human has no circuit-level recovery
 path.
 
+**Milestone 4 update:** `retry-flow` machine with an alternating
+check proves the block/retry loop works. First `advance proceed` is
+blocked with `gateOpen: FALSE (invocations: 1)`. Second `advance
+proceed` passes with `gateOpen: TRUE (invocations: 2)` and advances
+`waiting -> done`. The runtime preserves check state and invocation
+counts across suspend/resume boundaries. Tested at Go runtime, CLI,
+and ProB levels. Not yet tested with an agent driving the retry loop
+automatically.
+
 ## 6. Session persistence across harness restarts
 
 The suspend/resume model works for CLI. The pi extension holds state
