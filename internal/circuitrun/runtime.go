@@ -14,6 +14,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type SessionState string
+
+const (
+	SessionUnloaded  SessionState = "unloaded"
+	SessionActive    SessionState = "active"
+	SessionSuspended SessionState = "suspended"
+	SessionStopped   SessionState = "stopped"
+)
+
 type Runtime struct {
 	root string
 	run  *Run
@@ -23,6 +32,7 @@ type Run struct {
 	MachineName string                  `json:"machineName"`
 	MachineFile string                  `json:"machineFile"`
 	Current     string                  `json:"current"`
+	Session     SessionState            `json:"session"`
 	Booleans    map[string]bool         `json:"booleans,omitempty"`
 	Checks      map[string]CheckRuntime `json:"checks,omitempty"`
 }
@@ -67,6 +77,17 @@ type registeredCheck struct {
 	Returns string `yaml:"returns"`
 }
 
+func (runtime *Runtime) IsActive() bool {
+	return runtime.run != nil && runtime.run.Session == SessionActive
+}
+
+func (runtime *Runtime) SessionState() SessionState {
+	if runtime.run == nil {
+		return SessionUnloaded
+	}
+	return runtime.run.Session
+}
+
 func Resume(root string) (*Runtime, error) {
 	runtime := &Runtime{root: root}
 	content, err := os.ReadFile(runtime.suspendedPath())
@@ -87,6 +108,9 @@ func Resume(root string) (*Runtime, error) {
 func (runtime *Runtime) Suspend() error {
 	if runtime.run == nil {
 		return nil
+	}
+	if runtime.run.Session == SessionStopped {
+		return runtime.Stop()
 	}
 	path := runtime.suspendedPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -113,6 +137,7 @@ func (runtime *Runtime) Start(machineName string) (StatusReport, error) {
 		MachineName: machineName,
 		MachineFile: machineFile,
 		Current:     report.Current,
+		Session:     SessionActive,
 		Booleans:    map[string]bool{},
 		Checks:      map[string]CheckRuntime{},
 	}
@@ -120,8 +145,8 @@ func (runtime *Runtime) Start(machineName string) (StatusReport, error) {
 }
 
 func (runtime *Runtime) Status() (StatusReport, error) {
-	if runtime.run == nil {
-		return StatusReport{}, errors.New("no suspended circuit; run: circuit start <machine>")
+	if !runtime.IsActive() {
+		return StatusReport{}, errors.New("no active session; run: circuit start <machine>")
 	}
 	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
 	if err != nil {
@@ -135,8 +160,8 @@ func (runtime *Runtime) Status() (StatusReport, error) {
 }
 
 func (runtime *Runtime) Advance(event string) (AdvanceReport, error) {
-	if runtime.run == nil {
-		return AdvanceReport{}, errors.New("no suspended circuit; run: circuit start <machine>")
+	if !runtime.IsActive() {
+		return AdvanceReport{}, errors.New("no active session; run: circuit start <machine>")
 	}
 	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
 	if err != nil {
@@ -159,6 +184,9 @@ func (runtime *Runtime) Advance(event string) (AdvanceReport, error) {
 	}
 	if result.Allowed {
 		runtime.run.Current = result.To
+		if runtime.isTerminal() {
+			runtime.run.Session = SessionStopped
+		}
 	}
 	return report, nil
 }
@@ -189,6 +217,21 @@ func (runtime *Runtime) ListMachines() ([]string, error) {
 
 func (runtime *Runtime) SuspendedPath() string {
 	return runtime.suspendedPath()
+}
+
+func (runtime *Runtime) isTerminal() bool {
+	if runtime.run == nil {
+		return false
+	}
+	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
+	if err != nil {
+		return false
+	}
+	report, err := machine.StateAtWithBooleans(runtime.run.Current, runtime.run.Booleans)
+	if err != nil {
+		return false
+	}
+	return len(report.Enabled) == 0
 }
 
 func (runtime *Runtime) statusFromReport(report circuitb.StateReport) StatusReport {

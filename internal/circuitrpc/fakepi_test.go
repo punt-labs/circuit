@@ -92,6 +92,10 @@ func TestRunnerLoopAgainstFakePi(t *testing.T) {
 		}
 		transitions = append(transitions, fmt.Sprintf("%s -> %s", report.From, report.To))
 
+		if !runtime.IsActive() {
+			break
+		}
+
 		status, err = runtime.Status()
 		if err != nil {
 			t.Fatalf("status: %v", err)

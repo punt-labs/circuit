@@ -55,6 +55,150 @@ func TestRuntimeStartMissingMachineFails(t *testing.T) {
 	}
 }
 
+func TestSessionLifecycleStates(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+
+	// unloaded: no session
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if runtime.IsActive() {
+		t.Fatal("new runtime should not be active")
+	}
+	if runtime.SessionState() != SessionUnloaded {
+		t.Fatalf("new runtime session state = %s, want unloaded", runtime.SessionState())
+	}
+
+	// start: unloaded -> active
+	if _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if !runtime.IsActive() {
+		t.Fatal("started runtime should be active")
+	}
+	if runtime.SessionState() != SessionActive {
+		t.Fatalf("started session state = %s, want active", runtime.SessionState())
+	}
+
+	// suspend + resume: active -> suspended -> active
+	if err := runtime.Suspend(); err != nil {
+		t.Fatalf("suspend: %v", err)
+	}
+	resumed, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume after suspend: %v", err)
+	}
+	if !resumed.IsActive() {
+		t.Fatal("resumed runtime should be active")
+	}
+	if resumed.SessionState() != SessionActive {
+		t.Fatalf("resumed session state = %s, want active", resumed.SessionState())
+	}
+
+	// stop: active -> unloaded
+	if err := resumed.Stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if resumed.IsActive() {
+		t.Fatal("stopped runtime should not be active")
+	}
+	if resumed.SessionState() != SessionUnloaded {
+		t.Fatalf("stopped session state = %s, want unloaded", resumed.SessionState())
+	}
+}
+
+func TestAutoStopOnTerminalState(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	// advance to running
+	if _, err := runtime.Advance("start"); err != nil {
+		t.Fatalf("advance start: %v", err)
+	}
+	if !runtime.IsActive() {
+		t.Fatal("should still be active after non-terminal advance")
+	}
+
+	// advance to done (terminal)
+	report, err := runtime.Advance("finish")
+	if err != nil {
+		t.Fatalf("advance finish: %v", err)
+	}
+	if !report.Allowed || report.To != "done" {
+		t.Fatalf("advance finish = %#v, want allowed to done", report)
+	}
+	if runtime.IsActive() {
+		t.Fatal("should not be active after terminal advance")
+	}
+	if runtime.SessionState() != SessionStopped {
+		t.Fatalf("terminal session state = %s, want stopped", runtime.SessionState())
+	}
+
+	// suspend after auto-stop should clear the file
+	if err := runtime.Suspend(); err != nil {
+		t.Fatalf("suspend after auto-stop: %v", err)
+	}
+	restoredRuntime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume after auto-stop: %v", err)
+	}
+	if restoredRuntime.IsActive() {
+		t.Fatal("resumed after auto-stop should not be active")
+	}
+}
+
+func TestStatusAndAdvanceFailAfterAutoStop(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if _, err := runtime.Advance("start"); err != nil {
+		t.Fatalf("advance start: %v", err)
+	}
+	if _, err := runtime.Advance("finish"); err != nil {
+		t.Fatalf("advance finish: %v", err)
+	}
+
+	// Session auto-stopped. Status and Advance should fail.
+	if _, err := runtime.Status(); err == nil {
+		t.Fatal("status after auto-stop returned nil error")
+	}
+	if _, err := runtime.Advance("start"); err == nil {
+		t.Fatal("advance after auto-stop returned nil error")
+	}
+}
+
+func TestStartWithFullPathMachine(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	fullPath := filepath.Join(root, "machines", "build-job.mch")
+	status, err := runtime.Start(fullPath)
+	if err != nil {
+		t.Fatalf("start full path: %v", err)
+	}
+	if status.Current != "idle" {
+		t.Fatalf("start full path current = %s, want idle", status.Current)
+	}
+}
+
 func TestRuntimeSuspendsAndResumes(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)

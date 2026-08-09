@@ -73,7 +73,7 @@ func TestBMachineAdvanceRequiresActiveCircuit(t *testing.T) {
 	if err == nil {
 		t.Fatal("advance without active circuit returned nil error")
 	}
-	if !strings.Contains(err.Error(), "no suspended circuit") {
+	if !strings.Contains(err.Error(), "no active session") {
 		t.Fatalf("advance without active circuit error mismatch: %v", err)
 	}
 }
