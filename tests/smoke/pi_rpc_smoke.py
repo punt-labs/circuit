@@ -7,8 +7,10 @@ Exit: 0 on success, 1 on failure.
 """
 
 import json
+import os
 import subprocess
 import sys
+import threading
 import time
 
 COMMANDS = [
@@ -24,13 +26,30 @@ proc = subprocess.Popen(
     ["pi", "--mode", "rpc", "--no-session", "--approve"],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
     text=True,
     cwd=".",
 )
 
 assert proc.stdin is not None
 assert proc.stdout is not None
+
+# Set stdout to non-blocking via a reader thread so readline cannot hang forever.
+lines: list[str] = []
+stop_reader = threading.Event()
+
+
+def reader() -> None:
+    assert proc.stdout is not None
+    while not stop_reader.is_set():
+        line = proc.stdout.readline()
+        if not line:
+            break
+        lines.append(line)
+
+
+reader_thread = threading.Thread(target=reader, daemon=True)
+reader_thread.start()
 
 failures = 0
 
@@ -42,13 +61,14 @@ try:
         )
         proc.stdin.flush()
 
-        started = time.time()
+        deadline = time.time() + 30
         matched = False
-        while time.time() - started < 30:
-            line = proc.stdout.readline()
-            if not line:
-                break
-            event = json.loads(line)
+        while time.time() < deadline:
+            if not lines:
+                time.sleep(0.1)
+                continue
+            raw = lines.pop(0)
+            event = json.loads(raw)
             if (
                 event.get("type") != "extension_ui_request"
                 or event.get("method") != "notify"
@@ -67,6 +87,12 @@ try:
             print(f"FAIL {request_id}: timed out waiting for response")
             failures += 1
 finally:
+    stop_reader.set()
     proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 sys.exit(1 if failures > 0 else 0)

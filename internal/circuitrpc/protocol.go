@@ -51,11 +51,24 @@ func FormatPrompt(status circuitrun.StatusReport) string {
 }
 
 func ExtractOperation(response string, status circuitrun.StatusReport) string {
-	lower := strings.ToLower(strings.TrimSpace(response))
+	trimmed := strings.TrimSpace(response)
+	// Prefer exact match first.
 	for _, call := range status.Enabled {
 		event := ExtractEvent(call.Call)
-		if strings.Contains(lower, strings.ToLower(event)) {
+		if strings.EqualFold(trimmed, event) {
 			return event
+		}
+	}
+	// Fall back to word-boundary containment.
+	lower := strings.ToLower(trimmed)
+	words := strings.Fields(lower)
+	for _, call := range status.Enabled {
+		event := ExtractEvent(call.Call)
+		eventLower := strings.ToLower(event)
+		for _, word := range words {
+			if word == eventLower {
+				return event
+			}
 		}
 	}
 	return ""

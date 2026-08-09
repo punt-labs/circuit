@@ -56,6 +56,9 @@ func (runtime *Runtime) loadLegacySuspendedRun() error {
 		}
 		run.SessionID = id
 	}
+	if !isSafeSessionID(run.SessionID) {
+		return fmt.Errorf("unsafe legacy session id: %s", run.SessionID)
+	}
 	runtime.sessions[run.SessionID] = &run
 	runtime.currentID = run.SessionID
 	return nil
@@ -87,6 +90,9 @@ func (runtime *Runtime) loadSessions() error {
 		}
 		if run.SessionID == "" {
 			run.SessionID = strings.TrimSuffix(entry.Name(), ".json")
+		}
+		if !isSafeSessionID(run.SessionID) {
+			continue
 		}
 		runtime.sessions[run.SessionID] = &run
 	}
@@ -135,6 +141,13 @@ func sessionIDMachineName(machineName string) string {
 		return "machine"
 	}
 	return name
+}
+
+func isSafeSessionID(id string) bool {
+	if id == "" || strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
+		return false
+	}
+	return filepath.Base(id) == id
 }
 
 func randomHex(bytesCount int) (string, error) {

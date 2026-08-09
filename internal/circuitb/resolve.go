@@ -99,6 +99,9 @@ func (resolver *resolver) resolveValue(variable variable, raw rawExpression) val
 		return value{kind: valueNat, nat: expression.Value}
 	case rawIdentifierExpression:
 		if variable.kind == valueBool {
+			if expression.Name != "TRUE" && expression.Name != "FALSE" {
+				resolver.diagnostics = append(resolver.diagnostics, Diagnostic{Span: raw.expressionSpan(), Message: fmt.Sprintf("invalid BOOL literal %s; expected TRUE or FALSE", expression.Name)})
+			}
 			return value{kind: valueBool, bool: expression.Name == "TRUE"}
 		}
 		return value{kind: valueEnum, enum: expression.Name}

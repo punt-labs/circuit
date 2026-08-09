@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -29,7 +30,13 @@ func (runtime *Runtime) runChecks(run *Run) error {
 	if run.Checks == nil {
 		run.Checks = map[string]CheckRuntime{}
 	}
-	for variable, binding := range bindings.Checks {
+	variableNames := make([]string, 0, len(bindings.Checks))
+	for name := range bindings.Checks {
+		variableNames = append(variableNames, name)
+	}
+	sort.Strings(variableNames)
+	for _, variable := range variableNames {
+		binding := bindings.Checks[variable]
 		registered, ok := registry.Checks[binding.Use]
 		if !ok {
 			return fmt.Errorf("check %s references unknown registry entry %s", variable, binding.Use)
