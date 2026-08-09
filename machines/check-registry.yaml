@@ -1,0 +1,5 @@
+checks:
+  makeCheck:
+    kind: command
+    command: make check
+    returns: BOOL
