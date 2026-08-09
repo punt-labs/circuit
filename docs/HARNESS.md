@@ -56,27 +56,30 @@ Current extension commands:
 Slash commands (human control):
 
 - `/circuit list` lists available machines from `machines/*.mch`.
-- `/circuit start <machine>` starts an active circuit from a named machine.
-- `/circuit status` shows active circuit status.
-- `/circuit advance <event>` requests `Advance(event)` against the active
-  circuit.
-- `/circuit stop` clears the active circuit.
+- `/circuit start <machine>` starts a new circuit session from a named machine.
+- `/circuit status [session]` shows all active sessions or one selected session.
+- `/circuit advance <event> [session]` requests `Advance(event)` against the
+  only active session or a selected session.
+- `/circuit stop [session]` clears the only active session or a selected session.
 
 LLM tools (full parity with slash commands):
 
 - `circuit_list` lists available machines.
 - `circuit_start` starts an active circuit from a named machine.
-- `circuit_status` reports active circuit state and valid operations.
+- `circuit_status` reports active session state and valid operations; it accepts
+  an optional session ID.
 - `circuit_advance` requests a transition; the B machine validates the
-  precondition and returns allowed or blocked.
-- `circuit_stop` clears the active circuit.
+  precondition and returns allowed or blocked. It accepts an optional session ID
+  when multiple sessions are active.
+- `circuit_stop` clears an active circuit session; it accepts an optional
+  session ID.
 
 Context injection:
 
-- On every agent turn, `before_agent_start` injects the current circuit
-  state and valid operations into the agent's context when a session is
-  active. No injection when no session is active or after auto-stop on
-  terminal state.
+- On every agent turn, `before_agent_start` injects all active circuit
+  sessions, their current states, and valid operations into the agent's context.
+  No injection happens when no session is active or for sessions after
+  terminal auto-stop.
 
 ## opencode
 
@@ -116,10 +119,12 @@ machine semantics to Go. The expected manual smoke path is:
 /circuit advance finish
 ```
 
-The start command should show `current: idle`, `Advance(start)` enabled, and
-`Advance(finish)` blocked. After `/circuit advance start`, `/circuit status`
-should show `current: running` with `Advance(finish)` enabled. After
-`/circuit advance finish`, the active circuit reaches `done`.
+The start command should show a session ID, `current: idle`, `Advance(start)`
+enabled, and `Advance(finish)` blocked. After `/circuit advance start`,
+`/circuit status` should show `current: running` with `Advance(finish)` enabled.
+After `/circuit advance finish`, that session reaches `done` and auto-stops.
+With more than one active session, use `/circuit advance <event> <session>` and
+`/circuit stop <session>`.
 
 The precondition smoke uses `review-flow`:
 

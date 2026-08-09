@@ -77,15 +77,20 @@ successfully.
 
 ## 6. Session persistence across harness restarts
 
-The suspend/resume model works for CLI. The pi extension holds state
-via CLI calls. If pi restarts, the suspended file persists but the
-extension does not automatically resume the circuit. There is no
-session-entry integration.
+The suspend/resume model works for CLI and now supports multiple active
+sessions. Sessions persist as `.tmp/sessions/<id>.json`, where IDs use
+`<machine>-<4hex>`. Pi extension calls shell out to the same CLI, so a pi
+restart can discover persisted sessions through `circuit status` and
+context injection includes every active session.
 
-Risk: active circuits are silently lost on harness restart.
+Risk: active circuits are less likely to be lost, but session files are
+still repo-local runtime artifacts rather than pi session entries. There
+is no harness-native session-entry integration, no locking for truly
+concurrent CLI writers, and no UX for naming or selecting sessions beyond
+session IDs.
 
 **Session lifecycle update:** sessions now have explicit states
-(unloaded, active, suspended, stopped). Terminal states auto-stop
-the session, which clears the suspended file. Context injection only
-fires when a session is active. This reduces the stale-state problem
-but does not solve pi-session-entry integration.
+(unloaded, active, suspended, stopped). Terminal states auto-stop only
+the completed session, which clears its session file. Context injection
+fires when at least one session is active and includes all active
+sessions.

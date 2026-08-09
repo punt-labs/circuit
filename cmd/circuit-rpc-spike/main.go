@@ -31,7 +31,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("resume runtime: %w", err)
 	}
-	status, err := runtime.Start(machine)
+	_, status, err := runtime.Start(machine)
 	if err != nil {
 		return fmt.Errorf("start machine %s: %w", machine, err)
 	}

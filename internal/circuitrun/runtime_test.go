@@ -50,7 +50,7 @@ func TestRuntimeStartMissingMachineFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("missing"); err == nil {
+	if _, _, err := runtime.Start("missing"); err == nil {
 		t.Fatal("start missing machine returned nil error")
 	}
 }
@@ -72,7 +72,7 @@ func TestSessionLifecycleStates(t *testing.T) {
 	}
 
 	// start: unloaded -> active
-	if _, err := runtime.Start("build-job"); err != nil {
+	if _, _, err := runtime.Start("build-job"); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	if !runtime.IsActive() {
@@ -116,7 +116,7 @@ func TestAutoStopOnTerminalState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	if _, err := runtime.Start("build-job"); err != nil {
+	if _, _, err := runtime.Start("build-job"); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestStatusAndAdvanceFailAfterAutoStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	if _, err := runtime.Start("build-job"); err != nil {
+	if _, _, err := runtime.Start("build-job"); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	if _, err := runtime.Advance("start"); err != nil {
@@ -190,7 +190,7 @@ func TestStartWithFullPathMachine(t *testing.T) {
 		t.Fatalf("resume: %v", err)
 	}
 	fullPath := filepath.Join(root, "machines", "build-job.mch")
-	status, err := runtime.Start(fullPath)
+	_, status, err := runtime.Start(fullPath)
 	if err != nil {
 		t.Fatalf("start full path: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestRuntimeSuspendsAndResumes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("build-job"); err != nil {
+	if _, _, err := runtime.Start("build-job"); err != nil {
 		t.Fatalf("start build-job: %v", err)
 	}
 	if _, err := runtime.Advance("start"); err != nil {
@@ -255,7 +255,7 @@ func TestRuntimeStopClearsSuspendedRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("build-job"); err != nil {
+	if _, _, err := runtime.Start("build-job"); err != nil {
 		t.Fatalf("start build-job: %v", err)
 	}
 	if err := runtime.Suspend(); err != nil {
@@ -281,7 +281,7 @@ func TestRuntimeRunsBoundCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("review-flow"); err != nil {
+	if _, _, err := runtime.Start("review-flow"); err != nil {
 		t.Fatalf("start review-flow: %v", err)
 	}
 	report, err := runtime.Advance("requestReview")
@@ -308,7 +308,7 @@ func TestRuntimeRejectsUnknownCheckRegistryEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("review-flow"); err != nil {
+	if _, _, err := runtime.Start("review-flow"); err != nil {
 		t.Fatalf("start review-flow: %v", err)
 	}
 	_, err = runtime.Advance("requestReview")
@@ -328,7 +328,7 @@ func TestRuntimeRejectsNonBooleanCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("review-flow"); err != nil {
+	if _, _, err := runtime.Start("review-flow"); err != nil {
 		t.Fatalf("start review-flow: %v", err)
 	}
 	_, err = runtime.Advance("requestReview")
@@ -345,7 +345,7 @@ func TestRuntimeBlocksFailedBoundCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, err := runtime.Start("review-flow"); err != nil {
+	if _, _, err := runtime.Start("review-flow"); err != nil {
 		t.Fatalf("start review-flow: %v", err)
 	}
 	report, err := runtime.Advance("requestReview")
@@ -369,7 +369,7 @@ func TestRuntimeRetryAfterBlockedCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	if _, err := runtime.Start("retry-flow"); err != nil {
+	if _, _, err := runtime.Start("retry-flow"); err != nil {
 		t.Fatalf("start retry-flow: %v", err)
 	}
 

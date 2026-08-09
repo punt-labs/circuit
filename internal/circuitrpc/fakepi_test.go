@@ -20,7 +20,7 @@ func TestRunnerLoopAgainstFakePi(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	status, err := runtime.Start("build-job")
+	_, status, err := runtime.Start("build-job")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}

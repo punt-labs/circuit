@@ -48,8 +48,8 @@ Implemented now:
   and `/circuit` slash commands for human control
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
-- session lifecycle runtime under `internal/circuitrun/` with auto-stop on
-  terminal states
+- multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
+  session IDs and auto-stop on terminal states
 - RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
   test
 - CLI commands: `list`, `start`, `status`, `advance`, `stop`
@@ -125,6 +125,13 @@ circuit start build-job
 circuit status
 circuit advance start
 circuit advance finish
+
+# With multiple sessions, target one explicitly:
+circuit start build-job
+circuit start review-flow
+circuit status
+circuit advance start build-job-a3f8
+circuit stop review-flow-b4c9
 ```
 
 The Go runtime parses and evaluates a strict Circuit-B profile. It does not try
@@ -154,20 +161,25 @@ booleans and bound to registered checks outside B. For example,
 `coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
 `makeCheck` registry entry in `check-registry.yaml`.
 
-Circuit manages one session at a time. Each session has a lifecycle:
+Circuit manages multiple sessions. A session is one running instance of a
+machine, identified as `<machine>-<4hex>` such as `build-job-a3f8`. Each session
+has independent B state and check history. The runtime lifecycle is:
 
-- `unloaded` — no machine selected
-- `active` — machine is running, internal workflow state is progressing
-- `suspended` — machine paused to disk, resumes on next CLI invocation
+- `unloaded` — no session is selected or persisted
+- `active` — machine is loaded in memory and internal workflow state is
+  progressing
+- `suspended` — machine is serialized to disk between short CLI invocations
 - `stopped` — machine reached a terminal state or was explicitly stopped
 
 Short-lived CLI commands implicitly resume and suspend:
 `suspended → active → suspended`. When a machine reaches a terminal state
-(no enabled operations), the session auto-stops. `status` with no active
-session reports "no active session" instead of an error.
+(no enabled operations), that session auto-stops without affecting other active
+sessions. `status` with no active session reports "no active session" instead of
+an error.
 
-The suspended form is stored at `.tmp/circuit.suspended.json` — a pause/resume
-artifact, not the conceptual source of state.
+Active sessions are stored as JSON files under `.tmp/sessions/`. The old
+`.tmp/circuit.suspended.json` path is read only for migration from the earlier
+single-session runtime.
 
 The harness adapter is responsible for UI and observation. The machine remains
 the authority for valid progress.
@@ -268,9 +280,9 @@ Slash commands (human control):
 
 - `/circuit list`
 - `/circuit start <machine>`
-- `/circuit status`
-- `/circuit advance <event>`
-- `/circuit stop`
+- `/circuit status [session]`
+- `/circuit advance <event> [session]`
+- `/circuit stop [session]`
 
 LLM tools (agent calls these directly):
 
@@ -331,7 +343,7 @@ Done:
 - `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`
 - ProB development gate: `make check-machines`
 - multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
-- session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
+- multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
 - CLI: `list`, `start`, `status`, `advance`, `stop`
 - check bindings: `review-flow.checks.yaml`, `check-registry.yaml`
 - golangci-lint adopted matching ethos conventions
@@ -357,7 +369,8 @@ In progress:
 - gating: `circuit_advance` tool enforces B-machine preconditions; blocked
   transitions produce agent-visible feedback with failed conditions
 - session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with
-  auto-stop on terminal states; no injection when no session is active
+  per-session auto-stop on terminal states; no injection when no session is
+  active; multiple active sessions inject together
 - first live test: agent called `circuit_status` then `circuit_advance`
   unprompted and progressed `build-job` from `idle` to `running`
 

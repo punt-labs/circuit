@@ -1,4 +1,5 @@
 export interface CircuitStatus {
+	session?: string;
 	machine: string;
 	current: string;
 	enabled: string[];
@@ -7,11 +8,23 @@ export interface CircuitStatus {
 }
 
 export function parseCircuitStatus(output: string): CircuitStatus | undefined {
-	const lines = output.split("\n");
-	const machineLine = lines.find((l) => l.startsWith("machine: "));
-	const currentLine = lines.find((l) => l.startsWith("current: "));
+	return parseStatusBlock(output.split("\n"));
+}
+
+export function parseCircuitStatuses(output: string): CircuitStatus[] {
+	return output
+		.split(/\n\s*\n/)
+		.map((block) => parseStatusBlock(block.split("\n")))
+		.filter((status): status is CircuitStatus => status !== undefined);
+}
+
+function parseStatusBlock(lines: string[]): CircuitStatus | undefined {
+	const sessionLine = lines.find((line) => line.startsWith("session: "));
+	const machineLine = lines.find((line) => line.startsWith("machine: "));
+	const currentLine = lines.find((line) => line.startsWith("current: "));
 	if (!machineLine || !currentLine) return undefined;
 
+	const session = sessionLine?.slice("session: ".length).trim();
 	const machine = machineLine.slice("machine: ".length).trim();
 	const current = currentLine.slice("current: ".length).trim();
 	const enabled: string[] = [];
@@ -41,15 +54,18 @@ export function parseCircuitStatus(output: string): CircuitStatus | undefined {
 		}
 	}
 
-	return { machine, current, enabled, blocked, checks };
+	const status = { machine, current, enabled, blocked, checks };
+	return session ? { session, ...status } : status;
 }
 
 export function formatContextInjection(status: CircuitStatus): string {
-	const lines: string[] = [
-		`Circuit machine: ${status.machine}`,
-		`Current state: ${status.current}`,
-		"",
-	];
+	const lines: string[] = [];
+	if (status.session) {
+		lines.push(`Circuit session: ${status.session}`);
+	}
+	lines.push(`Circuit machine: ${status.machine}`);
+	lines.push(`Current state: ${status.current}`);
+	lines.push("");
 
 	if (status.enabled.length > 0) {
 		lines.push("Enabled operations:");
@@ -70,6 +86,10 @@ export function formatContextInjection(status: CircuitStatus): string {
 	lines.push("workflow progress without a successful circuit_advance call.");
 
 	return lines.join("\n");
+}
+
+export function formatContextInjections(statuses: CircuitStatus[]): string {
+	return statuses.map((status) => formatContextInjection(status)).join("\n\n---\n\n");
 }
 
 export function formatToolResult(

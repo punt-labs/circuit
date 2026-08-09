@@ -448,10 +448,10 @@ Each circuit run is a session with explicit lifecycle states:
 SessionState ::= unloaded | active | suspended | stopped
 ```
 
-- `unloaded` — no machine selected.
-- `active` — machine is in memory, workflow state is progressing.
-- `suspended` — machine paused to `.tmp/circuit.suspended.json`.
-- `stopped` — machine reached a terminal state or was explicitly stopped.
+- `unloaded` — no session selected or persisted.
+- `active` — session is in memory, workflow state is progressing.
+- `suspended` — session serialized under `.tmp/sessions/` between CLI calls.
+- `stopped` — session reached a terminal state or was explicitly stopped.
 
 Short-lived CLI invocations use implicit boundaries:
 
@@ -459,17 +459,19 @@ Short-lived CLI invocations use implicit boundaries:
 suspended -> active -> suspended
 ```
 
-When `Advance` reaches a terminal state (no enabled operations), the session
-automatically transitions to `stopped`. Suspending a stopped session clears the
-suspended file. `Status` and `Advance` require an active session; `status` with
-no active session reports "no active session" as informational output, not an
-error.
+When `Advance` reaches a terminal state (no enabled operations), that session
+automatically transitions to `stopped`. Suspending a stopped session clears its
+session file. `Status` and `Advance` require at least one active session;
+`status` with no active session reports "no active session" as informational
+output, not an error. Implicit `advance` and `stop` require exactly one active
+session; otherwise callers target a session ID such as `build-job-a3f8`.
 
-Context injection in pi fires only when a session is active.
+Context injection in pi fires only when at least one session is active and
+includes every active session.
 
 ## Runtime commands
 
-The user-facing Go CLI should operate on an active circuit:
+The user-facing Go CLI operates on active circuit sessions:
 
 ```bash
 circuit list
@@ -477,17 +479,23 @@ circuit start pr-watch
 circuit status
 circuit advance ReadyToMerge
 circuit stop
+
+# Optional session qualifiers disambiguate multiple active sessions.
+circuit advance ReadyToMerge pr-watch-a3f8
+circuit stop build-job-b4c9
 ```
 
 `list` shows available B machines from `machines/*.mch`.
 
-`start` selects a machine, initializes an active circuit, and records the active
+`start` selects a machine, initializes a new active session, and records the
 machine plus current B state.
 
-`status` reports the active circuit. State is the B-machine variable; status is
-the operational report. The first status report includes:
+`status` reports all active sessions or one selected session. State is the
+B-machine variable; status is the operational report. The first status report
+includes:
 
-- active machine;
+- session ID;
+- machine;
 - current B-machine state;
 - enabled operations;
 - blocked operations.
@@ -501,12 +509,13 @@ Later status reports should grow operational metadata:
 - latest accepted transition;
 - latest blocked transition and failed preconditions.
 
-`advance <event>` requests one explicit operation/event against the active
-circuit. If multiple operations are enabled, Circuit does not guess. The caller
-must choose. If the requested operation is blocked, the command reports failed
-preconditions and leaves the active state unchanged.
+`advance <event> [session]` requests one explicit operation/event against the
+only active session or the selected session. If multiple operations are enabled,
+Circuit does not guess. The caller must choose. If the requested operation is
+blocked, the command reports failed preconditions and leaves the active state
+unchanged.
 
-`stop` clears the active circuit.
+`stop [session]` clears the only active session or the selected session.
 
 ## Harness relationships
 
@@ -527,7 +536,7 @@ pi extension
 Pi owns UI, status widgets, session integration, and user interaction. The B
 machine owns valid progress. The pi command surface should mirror the CLI:
 `/circuit list`, `/circuit start <machine>`, `/circuit status`,
-`/circuit advance <event>`, and `/circuit stop`.
+`/circuit advance <event> [session]`, and `/circuit stop [session]`.
 
 ### Engine drives pi over RPC
 

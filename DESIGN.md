@@ -88,7 +88,8 @@ states:
 SessionState ::= unloaded | active | suspended | stopped
 ```
 
-When advance reaches a terminal state, the session auto-stops.
+A runtime may hold multiple active sessions. When advance reaches a
+terminal state, only that session auto-stops.
 
 **Evidence:** Without auto-stop, terminal machines injected stale state
 into agent context indefinitely. The session lifecycle fix was driven by
@@ -96,31 +97,35 @@ a real usability problem observed during milestone 4 testing.
 
 **Constraints:**
 
-- `status` and `advance` require an active session.
+- `status` and `advance` require at least one active session.
 - `status` with no active session is informational, not an error.
-- Suspending a stopped session clears the suspended file.
-- Context injection fires only when a session is active.
+- Implicit `advance` and `stop` are valid only when exactly one session
+  is active; otherwise the caller must provide a session ID.
+- Suspending a stopped session clears its session file.
+- Context injection fires only when at least one session is active.
 
 ## ADR 6: Multiple concurrent sessions
 
-**Decision:** The architecture must support multiple active sessions.
-Each session is independent: its own machine, its own state, its own
-check history.
+**Decision:** The runtime supports multiple active sessions. Each
+session is independent: its own machine, its own B state, and its own
+check history. Session IDs use `<machine>-<4hex>` such as
+`build-job-a3f8`.
 
 **Evidence:** Real workflows require concurrent machines. A PR workflow
 may run `review-flow` and `pr-watch` simultaneously — one tracking
-code review lifecycle, the other tracking CI status. Enforcing one
-session at a time would be an artificial constraint that real usage
-would immediately violate.
+code review lifecycle, the other tracking CI status. Runtime and CLI
+tests now cover starting two sessions, listing both, targeted advance,
+implicit ambiguity errors, targeted stop, and per-session terminal
+auto-stop.
 
 **Constraints:**
 
-- Sessions are identified by machine name or a session identifier.
-- The suspended form must support multiple session files.
-- Context injection should include all active sessions.
-- CLI commands should accept an optional session/machine qualifier.
-- The current single-session implementation is a stepping stone, not
-  the final design.
+- Sessions are identified by generated session ID, not by machine name
+  alone.
+- Active sessions are persisted under `.tmp/sessions/<id>.json`.
+- Context injection includes all active sessions.
+- CLI commands accept optional session qualifiers where ambiguity is
+  possible.
 
 ## ADR 7: Suspend/resume as implicit CLI lifecycle
 
@@ -136,9 +141,9 @@ counts survive suspend/resume boundaries correctly.
 
 - A future long-running process should keep the same runtime in memory
   and suspend only on exit.
-- The suspended file format is JSON, stored at
-  `.tmp/circuit.suspended.json` (single session) or under
-  `.tmp/sessions/` (multi-session, future).
+- The suspended file format is JSON, stored under `.tmp/sessions/`.
+- `.tmp/circuit.suspended.json` is read only as a legacy migration
+  source.
 
 ## ADR 8: Pi hosts circuit as a thin adapter
 
@@ -194,9 +199,10 @@ then `circuit_advance` unprompted and progressed `build-job` from
 
 ## ADR 11: Context injection via before_agent_start
 
-**Decision:** When a session is active, the pi extension injects the
-current machine state and valid operations into the agent's context on
-every turn via the `before_agent_start` hook.
+**Decision:** When at least one session is active, the pi extension
+injects every active session's current machine state and valid
+operations into the agent's context on every turn via the
+`before_agent_start` hook.
 
 **Evidence:** Milestone 4 proved the agent used the injected context to
 choose the correct tool call without being explicitly told to check
@@ -205,7 +211,7 @@ circuit state.
 **Constraints:**
 
 - No injection when no session is active.
-- No injection when the session is stopped (terminal auto-stop).
+- No injection for stopped sessions (terminal auto-stop).
 - The injection is a custom message with `display: false` so it
   participates in LLM context but does not clutter the TUI.
 

@@ -78,6 +78,83 @@ func TestBMachineAdvanceRequiresActiveCircuit(t *testing.T) {
 	}
 }
 
+func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start 1 returned error: %v", err)
+	}
+	first := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start 2 returned error: %v", err)
+	}
+	second := extractSessionID(t, stdout.String())
+	if first == second {
+		t.Fatalf("duplicate session id %s", first)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"status"}); err != nil {
+		t.Fatalf("status returned error: %v", err)
+	}
+	statusOutput := stdout.String()
+	if !strings.Contains(statusOutput, "session: "+first) || !strings.Contains(statusOutput, "session: "+second) {
+		t.Fatalf("status did not show both sessions: %q", statusOutput)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "start", first}); err != nil {
+		t.Fatalf("advance targeted session returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: idle -> running") {
+		t.Fatalf("targeted advance output mismatch: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"status", first}); err != nil {
+		t.Fatalf("targeted status returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "current: running") {
+		t.Fatalf("targeted status did not preserve advanced state: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", second}); err != nil {
+		t.Fatalf("targeted stop returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"status"}); err != nil {
+		t.Fatalf("status after targeted stop returned error: %v", err)
+	}
+	if strings.Contains(stdout.String(), "session: "+second) {
+		t.Fatalf("stopped session still visible: %q", stdout.String())
+	}
+}
+
+func TestBMachineMultipleSessionsRejectImplicitAdvanceAndStop(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start 1 returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start 2 returned error: %v", err)
+	}
+
+	if err := cmd.run([]string{"advance", "start"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
+		t.Fatalf("implicit advance error = %v, want ambiguity", err)
+	}
+	if err := cmd.run([]string{"stop"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
+		t.Fatalf("implicit stop error = %v, want ambiguity", err)
+	}
+}
+
 func TestBMachineAdvanceBlocked(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -248,14 +325,14 @@ func TestStartRejectsNoArgs(t *testing.T) {
 	}
 }
 
-func TestStatusRejectsExtraArgs(t *testing.T) {
+func TestStatusRejectsTooManyArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"status", "extra"})
+	err := cmd.run([]string{"status", "one", "two"})
 
 	if err == nil {
-		t.Fatal("status with extra args returned nil error")
+		t.Fatal("status with too many args returned nil error")
 	}
 }
 
@@ -270,14 +347,14 @@ func TestAdvanceRejectsNoArgs(t *testing.T) {
 	}
 }
 
-func TestStopRejectsExtraArgs(t *testing.T) {
+func TestStopRejectsTooManyArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"stop", "extra"})
+	err := cmd.run([]string{"stop", "one", "two"})
 
 	if err == nil {
-		t.Fatal("stop with extra args returned nil error")
+		t.Fatal("stop with too many args returned nil error")
 	}
 }
 
@@ -307,6 +384,17 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
+}
+
+func extractSessionID(t *testing.T, output string) string {
+	t.Helper()
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "session: ") {
+			return strings.TrimPrefix(line, "session: ")
+		}
+	}
+	t.Fatalf("output missing session id: %q", output)
+	return ""
 }
 
 func writeAlternatingRegistry(t *testing.T, root string) {

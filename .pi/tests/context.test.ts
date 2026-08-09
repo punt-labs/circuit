@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
 	formatContextInjection,
+	formatContextInjections,
 	formatToolResult,
 	parseAdvanceOutput,
 	parseCircuitStatus,
+	parseCircuitStatuses,
 } from "../lib/context.js";
 
 describe("parseCircuitStatus", () => {
 	it("parses full status output", () => {
 		const output = [
+			"session: review-flow-a3f8",
 			"machine: review-flow",
 			"current: coding",
 			"enabled:",
@@ -22,6 +25,7 @@ describe("parseCircuitStatus", () => {
 		const status = parseCircuitStatus(output);
 
 		expect(status).toEqual({
+			session: "review-flow-a3f8",
 			machine: "review-flow",
 			current: "coding",
 			enabled: ["Advance(requestReview)"],
@@ -55,6 +59,43 @@ describe("parseCircuitStatus", () => {
 		expect(parseCircuitStatus("started: build-job")).toBeUndefined();
 	});
 
+	it("parses multiple status blocks", () => {
+		const output = [
+			"session: build-job-a3f8",
+			"machine: build-job",
+			"current: idle",
+			"enabled:",
+			"  Advance(start)",
+			"blocked:",
+			"",
+			"session: review-flow-b4c9",
+			"machine: review-flow",
+			"current: coding",
+			"enabled:",
+			"blocked:",
+			"  Advance(requestReview)",
+		].join("\n");
+
+		expect(parseCircuitStatuses(output)).toEqual([
+			{
+				session: "build-job-a3f8",
+				machine: "build-job",
+				current: "idle",
+				enabled: ["Advance(start)"],
+				blocked: [],
+				checks: {},
+			},
+			{
+				session: "review-flow-b4c9",
+				machine: "review-flow",
+				current: "coding",
+				enabled: [],
+				blocked: ["Advance(requestReview)"],
+				checks: {},
+			},
+		]);
+	});
+
 	it("handles empty enabled and blocked", () => {
 		const output = ["machine: done-machine", "current: done", "enabled:", "blocked:"].join("\n");
 
@@ -68,6 +109,7 @@ describe("parseCircuitStatus", () => {
 describe("formatContextInjection", () => {
 	it("includes machine, state, enabled, and blocked operations", () => {
 		const text = formatContextInjection({
+			session: "build-job-a3f8",
 			machine: "build-job",
 			current: "idle",
 			enabled: ["Advance(start)"],
@@ -75,6 +117,7 @@ describe("formatContextInjection", () => {
 			checks: {},
 		});
 
+		expect(text).toContain("Circuit session: build-job-a3f8");
 		expect(text).toContain("Circuit machine: build-job");
 		expect(text).toContain("Current state: idle");
 		expect(text).toContain("Advance(start)");
@@ -93,6 +136,31 @@ describe("formatContextInjection", () => {
 
 		expect(text).not.toContain("Enabled operations:");
 		expect(text).not.toContain("Blocked operations:");
+	});
+
+	it("formats multiple status injections", () => {
+		const text = formatContextInjections([
+			{
+				session: "build-job-a3f8",
+				machine: "build-job",
+				current: "idle",
+				enabled: [],
+				blocked: [],
+				checks: {},
+			},
+			{
+				session: "review-flow-b4c9",
+				machine: "review-flow",
+				current: "coding",
+				enabled: [],
+				blocked: [],
+				checks: {},
+			},
+		]);
+
+		expect(text).toContain("Circuit session: build-job-a3f8");
+		expect(text).toContain("---");
+		expect(text).toContain("Circuit session: review-flow-b4c9");
 	});
 });
 

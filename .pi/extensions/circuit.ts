@@ -4,7 +4,11 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseCircuitCommand } from "../lib/parse.js";
-import { formatContextInjection, parseAdvanceOutput, parseCircuitStatus } from "../lib/context.js";
+import {
+	formatContextInjections,
+	parseAdvanceOutput,
+	parseCircuitStatuses,
+} from "../lib/context.js";
 
 const execFileAsync = promisify(execFile);
 const MACHINE_DIR = "machines";
@@ -15,9 +19,9 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async () => {
 		const statusResult = await runCircuit(["status"]);
 		if (!statusResult.ok) return;
-		const status = parseCircuitStatus(statusResult.message);
-		if (!status) return;
-		const injection = formatContextInjection(status);
+		const statuses = parseCircuitStatuses(statusResult.message);
+		if (statuses.length === 0) return;
+		const injection = formatContextInjections(statuses);
 		return {
 			message: {
 				customType: "circuit-state",
@@ -82,14 +86,23 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "circuit_status",
 		label: "Circuit Status",
-		description: "Report the active circuit machine state, enabled and blocked operations.",
-		promptSnippet: "Show current circuit machine state and available transitions",
+		description: "Report active circuit session state, enabled and blocked operations.",
+		promptSnippet: "Show current circuit session state and available transitions",
 		promptGuidelines: [
 			"Use circuit_status to check the current workflow state before deciding next steps.",
 		],
-		parameters: {},
-		async execute() {
-			const result = await runCircuit(["status"]);
+		parameters: {
+			type: "object",
+			properties: {
+				session: {
+					type: "string",
+					description: "Optional session ID, e.g. 'build-job-a3f8'",
+				},
+			},
+		},
+		async execute(_toolCallId, params) {
+			const session = (params as { session?: string }).session;
+			const result = await runCircuit(session ? ["status", session] : ["status"]);
 			return {
 				content: [{ type: "text" as const, text: result.message }],
 				details: { ok: result.ok },
@@ -114,18 +127,22 @@ export default function circuitExtension(pi: ExtensionAPI) {
 					type: "string",
 					description: "The transition event name, e.g. 'start', 'requestReview', 'approve'",
 				},
+				session: {
+					type: "string",
+					description: "Optional session ID when multiple sessions are active",
+				},
 			},
 			required: ["event"],
 		},
 		async execute(_toolCallId, params) {
-			const event = (params as { event: string }).event;
+			const { event, session } = params as { event: string; session?: string };
 			if (!event) {
 				return {
 					content: [{ type: "text" as const, text: "missing event parameter" }],
 					details: { ok: false },
 				};
 			}
-			const result = await runCircuit(["advance", event]);
+			const result = await runCircuit(session ? ["advance", event, session] : ["advance", event]);
 			const parsed = parseAdvanceOutput(result.message);
 			return {
 				content: [{ type: "text" as const, text: result.message }],
@@ -137,11 +154,20 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "circuit_stop",
 		label: "Circuit Stop",
-		description: "Clear the active circuit.",
-		promptSnippet: "Stop the active circuit machine",
-		parameters: {},
-		async execute() {
-			const result = await runCircuit(["stop"]);
+		description: "Clear an active circuit session.",
+		promptSnippet: "Stop an active circuit session",
+		parameters: {
+			type: "object",
+			properties: {
+				session: {
+					type: "string",
+					description: "Optional session ID when multiple sessions are active",
+				},
+			},
+		},
+		async execute(_toolCallId, params) {
+			const session = (params as { session?: string }).session;
+			const result = await runCircuit(session ? ["stop", session] : ["stop"]);
 			return {
 				content: [{ type: "text" as const, text: result.message }],
 				details: { ok: result.ok },
@@ -152,7 +178,7 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	// -- Slash commands: human affordances --
 
 	pi.registerCommand("circuit", {
-		description: "Manage the active Circuit machine: /circuit <list|start|status|advance|stop>",
+		description: "Manage Circuit sessions: /circuit <list|start|status|advance|stop>",
 		handler: async (args, ctx) => {
 			const parsed = parseCircuitCommand(args);
 			switch (parsed.verb) {
@@ -171,21 +197,25 @@ export default function circuitExtension(pi: ExtensionAPI) {
 					return;
 				}
 				case "status": {
-					const result = await runCircuit(["status"]);
+					const result = await runCircuit(parsed.session ? ["status", parsed.session] : ["status"]);
 					ctx.ui.notify(result.message, result.ok ? "info" : "error");
 					return;
 				}
 				case "advance": {
 					if (!parsed.argument) {
-						ctx.ui.notify("Usage: /circuit advance <event>", "warning");
+						ctx.ui.notify("Usage: /circuit advance <event> [session]", "warning");
 						return;
 					}
-					const result = await runCircuit(["advance", parsed.argument]);
+					const result = await runCircuit(
+						parsed.session
+							? ["advance", parsed.argument, parsed.session]
+							: ["advance", parsed.argument],
+					);
 					ctx.ui.notify(result.message, result.ok ? "info" : "error");
 					return;
 				}
 				case "stop": {
-					const result = await runCircuit(["stop"]);
+					const result = await runCircuit(parsed.session ? ["stop", parsed.session] : ["stop"]);
 					ctx.ui.notify(result.message, result.ok ? "info" : "error");
 					return;
 				}

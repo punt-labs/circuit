@@ -1,6 +1,8 @@
 package circuitrun
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,11 +26,14 @@ const (
 )
 
 type Runtime struct {
-	root string
-	run  *Run
+	root      string
+	sessions  map[string]*Run
+	currentID string
+	lastState SessionState
 }
 
 type Run struct {
+	SessionID   string                  `json:"sessionId"`
 	MachineName string                  `json:"machineName"`
 	MachineFile string                  `json:"machineFile"`
 	Current     string                  `json:"current"`
@@ -37,12 +42,8 @@ type Run struct {
 	Checks      map[string]CheckRuntime `json:"checks,omitempty"`
 }
 
-type CheckRuntime struct {
-	Invocations int  `json:"invocations"`
-	LastResult  bool `json:"lastResult"`
-}
-
 type StatusReport struct {
+	SessionID   string
 	MachineName string
 	Current     string
 	Enabled     []circuitb.CallStatus
@@ -51,12 +52,18 @@ type StatusReport struct {
 }
 
 type AdvanceReport struct {
-	Allowed bool
-	From    string
-	To      string
-	Event   string
-	Failed  []string
-	Checks  map[string]CheckRuntime
+	SessionID string
+	Allowed   bool
+	From      string
+	To        string
+	Event     string
+	Failed    []string
+	Checks    map[string]CheckRuntime
+}
+
+type CheckRuntime struct {
+	Invocations int  `json:"invocations"`
+	LastResult  bool `json:"lastResult"`
 }
 
 type checkBindingsFile struct {
@@ -78,62 +85,82 @@ type registeredCheck struct {
 }
 
 func (runtime *Runtime) IsActive() bool {
-	return runtime.run != nil && runtime.run.Session == SessionActive
+	return len(runtime.activeSessionIDs()) > 0
 }
 
 func (runtime *Runtime) SessionState() SessionState {
-	if runtime.run == nil {
-		return SessionUnloaded
+	ids := runtime.activeSessionIDs()
+	if len(ids) > 0 {
+		return SessionActive
 	}
-	return runtime.run.Session
+	if runtime.lastState != "" {
+		return runtime.lastState
+	}
+	return SessionUnloaded
 }
 
 func Resume(root string) (*Runtime, error) {
-	runtime := &Runtime{root: root}
-	content, err := os.ReadFile(runtime.suspendedPath())
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return runtime, nil
-		}
+	runtime := &Runtime{root: root, sessions: map[string]*Run{}, lastState: SessionUnloaded}
+	if err := runtime.loadLegacySuspendedRun(); err != nil {
 		return nil, err
 	}
-	var run Run
-	if err := json.Unmarshal(content, &run); err != nil {
+	if err := runtime.loadSessions(); err != nil {
 		return nil, err
 	}
-	runtime.run = &run
+	if len(runtime.sessions) > 0 {
+		runtime.lastState = SessionActive
+	}
 	return runtime, nil
 }
 
 func (runtime *Runtime) Suspend() error {
-	if runtime.run == nil {
-		return nil
-	}
-	if runtime.run.Session == SessionStopped {
-		return runtime.Stop()
-	}
-	path := runtime.suspendedPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
 		return err
 	}
-	content, err := json.MarshalIndent(runtime.run, "", "  ")
-	if err != nil {
-		return err
+	for _, id := range runtime.persistedSessionIDs() {
+		if _, ok := runtime.sessions[id]; !ok {
+			if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 	}
-	return os.WriteFile(path, append(content, '\n'), 0o600)
+	for id, run := range runtime.sessions {
+		if run.Session == SessionStopped {
+			if err := runtime.StopByID(id); err != nil {
+				return err
+			}
+			continue
+		}
+		if run.Session != SessionActive {
+			continue
+		}
+		content, err := json.MarshalIndent(run, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(runtime.sessionPath(id), append(content, '\n'), 0o600); err != nil {
+			return err
+		}
+	}
+	return runtime.removeLegacySuspendedRun()
 }
 
-func (runtime *Runtime) Start(machineName string) (StatusReport, error) {
+func (runtime *Runtime) Start(machineName string) (string, StatusReport, error) {
 	machineFile := runtime.resolveMachineFile(machineName)
 	machine, err := circuitb.LoadFile(machineFile)
 	if err != nil {
-		return StatusReport{}, err
+		return "", StatusReport{}, err
 	}
 	report, err := machine.State(nil)
 	if err != nil {
-		return StatusReport{}, err
+		return "", StatusReport{}, err
 	}
-	runtime.run = &Run{
+	id, err := runtime.newSessionID(machineName)
+	if err != nil {
+		return "", StatusReport{}, err
+	}
+	run := &Run{
+		SessionID:   id,
 		MachineName: machineName,
 		MachineFile: machineFile,
 		Current:     report.Current,
@@ -141,62 +168,84 @@ func (runtime *Runtime) Start(machineName string) (StatusReport, error) {
 		Booleans:    map[string]bool{},
 		Checks:      map[string]CheckRuntime{},
 	}
-	return runtime.statusFromReport(report), nil
+	runtime.sessions[id] = run
+	runtime.currentID = id
+	runtime.lastState = SessionActive
+	return id, runtime.statusFromReport(run, report), nil
 }
 
 func (runtime *Runtime) Status() (StatusReport, error) {
-	if !runtime.IsActive() {
-		return StatusReport{}, errors.New("no active session; run: circuit start <machine>")
-	}
-	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
+	run, err := runtime.singleActiveSession()
 	if err != nil {
 		return StatusReport{}, err
 	}
-	report, err := machine.StateAtWithBooleans(runtime.run.Current, runtime.run.Booleans)
+	return runtime.statusForRun(run)
+}
+
+func (runtime *Runtime) StatusAll() ([]StatusReport, error) {
+	ids := runtime.activeSessionIDs()
+	reports := make([]StatusReport, 0, len(ids))
+	for _, id := range ids {
+		report, err := runtime.StatusByID(id)
+		if err != nil {
+			return nil, err
+		}
+		reports = append(reports, report)
+	}
+	return reports, nil
+}
+
+func (runtime *Runtime) StatusByID(id string) (StatusReport, error) {
+	run, err := runtime.activeSessionByID(id)
 	if err != nil {
 		return StatusReport{}, err
 	}
-	return runtime.statusFromReport(report), nil
+	return runtime.statusForRun(run)
 }
 
 func (runtime *Runtime) Advance(event string) (AdvanceReport, error) {
-	if !runtime.IsActive() {
-		return AdvanceReport{}, errors.New("no active session; run: circuit start <machine>")
-	}
-	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
+	run, err := runtime.singleActiveSession()
 	if err != nil {
 		return AdvanceReport{}, err
 	}
-	if err := runtime.runChecks(); err != nil {
-		return AdvanceReport{}, err
-	}
-	result, err := machine.AdvanceFromWithBooleans(event, runtime.run.Current, runtime.run.Booleans)
+	return runtime.advanceRun(run, event)
+}
+
+func (runtime *Runtime) AdvanceByID(id string, event string) (AdvanceReport, error) {
+	run, err := runtime.activeSessionByID(id)
 	if err != nil {
 		return AdvanceReport{}, err
 	}
-	report := AdvanceReport{
-		Allowed: result.Allowed,
-		From:    result.From,
-		To:      result.To,
-		Event:   event,
-		Failed:  result.Failed,
-		Checks:  cloneChecks(runtime.run.Checks),
-	}
-	if result.Allowed {
-		runtime.run.Current = result.To
-		if runtime.isTerminal() {
-			runtime.run.Session = SessionStopped
-		}
-	}
-	return report, nil
+	return runtime.advanceRun(run, event)
 }
 
 func (runtime *Runtime) Stop() error {
-	runtime.run = nil
-	if err := os.Remove(runtime.suspendedPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	ids := runtime.activeSessionIDs()
+	if len(ids) == 0 {
+		runtime.lastState = SessionUnloaded
+		return runtime.removeLegacySuspendedRun()
+	}
+	if len(ids) > 1 {
+		return fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(ids, ", "))
+	}
+	return runtime.StopByID(ids[0])
+}
+
+func (runtime *Runtime) StopByID(id string) error {
+	if _, ok := runtime.sessions[id]; !ok {
+		return fmt.Errorf("unknown active session: %s", id)
+	}
+	delete(runtime.sessions, id)
+	if runtime.currentID == id {
+		runtime.currentID = ""
+	}
+	if len(runtime.activeSessionIDs()) == 0 {
+		runtime.lastState = SessionUnloaded
+	}
+	if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return nil
+	return runtime.removeLegacySuspendedRun()
 }
 
 func (runtime *Runtime) ListMachines() ([]string, error) {
@@ -219,33 +268,106 @@ func (runtime *Runtime) SuspendedPath() string {
 	return runtime.suspendedPath()
 }
 
-func (runtime *Runtime) isTerminal() bool {
-	if runtime.run == nil {
-		return false
+func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error) {
+	machine, err := circuitb.LoadFile(run.MachineFile)
+	if err != nil {
+		return AdvanceReport{}, err
 	}
-	machine, err := circuitb.LoadFile(runtime.run.MachineFile)
+	if err := runtime.runChecks(run); err != nil {
+		return AdvanceReport{}, err
+	}
+	result, err := machine.AdvanceFromWithBooleans(event, run.Current, run.Booleans)
+	if err != nil {
+		return AdvanceReport{}, err
+	}
+	report := AdvanceReport{
+		SessionID: run.SessionID,
+		Allowed:   result.Allowed,
+		From:      result.From,
+		To:        result.To,
+		Event:     event,
+		Failed:    result.Failed,
+		Checks:    cloneChecks(run.Checks),
+	}
+	if result.Allowed {
+		run.Current = result.To
+		runtime.currentID = run.SessionID
+		if runtime.isTerminal(run) {
+			run.Session = SessionStopped
+			runtime.lastState = SessionStopped
+			delete(runtime.sessions, run.SessionID)
+		}
+	}
+	return report, nil
+}
+
+func (runtime *Runtime) statusForRun(run *Run) (StatusReport, error) {
+	machine, err := circuitb.LoadFile(run.MachineFile)
+	if err != nil {
+		return StatusReport{}, err
+	}
+	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
+	if err != nil {
+		return StatusReport{}, err
+	}
+	return runtime.statusFromReport(run, report), nil
+}
+
+func (runtime *Runtime) statusFromReport(run *Run, report circuitb.StateReport) StatusReport {
+	return StatusReport{
+		SessionID:   run.SessionID,
+		MachineName: run.MachineName,
+		Current:     report.Current,
+		Enabled:     report.Enabled,
+		Blocked:     report.Blocked,
+		Checks:      cloneChecks(run.Checks),
+	}
+}
+
+func (runtime *Runtime) singleActiveSession() (*Run, error) {
+	ids := runtime.activeSessionIDs()
+	if len(ids) == 0 {
+		return nil, errors.New("no active session; run: circuit start <machine>")
+	}
+	if len(ids) > 1 {
+		return nil, fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(ids, ", "))
+	}
+	return runtime.sessions[ids[0]], nil
+}
+
+func (runtime *Runtime) activeSessionByID(id string) (*Run, error) {
+	run, ok := runtime.sessions[id]
+	if !ok || run.Session != SessionActive {
+		return nil, fmt.Errorf("unknown active session: %s", id)
+	}
+	return run, nil
+}
+
+func (runtime *Runtime) activeSessionIDs() []string {
+	ids := make([]string, 0, len(runtime.sessions))
+	for id, run := range runtime.sessions {
+		if run.Session == SessionActive {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (runtime *Runtime) isTerminal(run *Run) bool {
+	machine, err := circuitb.LoadFile(run.MachineFile)
 	if err != nil {
 		return false
 	}
-	report, err := machine.StateAtWithBooleans(runtime.run.Current, runtime.run.Booleans)
+	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
 	if err != nil {
 		return false
 	}
 	return len(report.Enabled) == 0
 }
 
-func (runtime *Runtime) statusFromReport(report circuitb.StateReport) StatusReport {
-	return StatusReport{
-		MachineName: runtime.run.MachineName,
-		Current:     report.Current,
-		Enabled:     report.Enabled,
-		Blocked:     report.Blocked,
-		Checks:      cloneChecks(runtime.run.Checks),
-	}
-}
-
-func (runtime *Runtime) runChecks() error {
-	bindings, err := runtime.loadCheckBindings(runtime.run.MachineName)
+func (runtime *Runtime) runChecks(run *Run) error {
+	bindings, err := runtime.loadCheckBindings(run.MachineName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -256,11 +378,11 @@ func (runtime *Runtime) runChecks() error {
 	if err != nil {
 		return err
 	}
-	if runtime.run.Booleans == nil {
-		runtime.run.Booleans = map[string]bool{}
+	if run.Booleans == nil {
+		run.Booleans = map[string]bool{}
 	}
-	if runtime.run.Checks == nil {
-		runtime.run.Checks = map[string]CheckRuntime{}
+	if run.Checks == nil {
+		run.Checks = map[string]CheckRuntime{}
 	}
 	for variable, binding := range bindings.Checks {
 		registered, ok := registry.Checks[binding.Use]
@@ -271,11 +393,11 @@ func (runtime *Runtime) runChecks() error {
 			return fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
 		passed := runtime.runBooleanCommand(registered.Command)
-		runtime.run.Booleans[variable] = passed
-		check := runtime.run.Checks[variable]
+		run.Booleans[variable] = passed
+		check := run.Checks[variable]
 		check.Invocations++
 		check.LastResult = passed
-		runtime.run.Checks[variable] = check
+		run.Checks[variable] = check
 	}
 	return nil
 }
@@ -312,6 +434,117 @@ func (runtime *Runtime) loadCheckRegistry() (checkRegistryFile, error) {
 	return registry, nil
 }
 
+func (runtime *Runtime) loadLegacySuspendedRun() error {
+	content, err := os.ReadFile(runtime.suspendedPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	var run Run
+	if err := json.Unmarshal(content, &run); err != nil {
+		return err
+	}
+	if run.Session != SessionActive {
+		return nil
+	}
+	if run.SessionID == "" {
+		id, err := runtime.newSessionID(run.MachineName)
+		if err != nil {
+			return err
+		}
+		run.SessionID = id
+	}
+	runtime.sessions[run.SessionID] = &run
+	runtime.currentID = run.SessionID
+	return nil
+}
+
+func (runtime *Runtime) loadSessions() error {
+	entries, err := os.ReadDir(runtime.sessionsDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(runtime.sessionsDir(), entry.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var run Run
+		if err := json.Unmarshal(content, &run); err != nil {
+			return err
+		}
+		if run.Session != SessionActive {
+			continue
+		}
+		if run.SessionID == "" {
+			run.SessionID = strings.TrimSuffix(entry.Name(), ".json")
+		}
+		runtime.sessions[run.SessionID] = &run
+	}
+	return nil
+}
+
+func (runtime *Runtime) persistedSessionIDs() []string {
+	entries, err := os.ReadDir(runtime.sessionsDir())
+	if err != nil {
+		return nil
+	}
+	ids := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		ids = append(ids, strings.TrimSuffix(entry.Name(), ".json"))
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (runtime *Runtime) newSessionID(machineName string) (string, error) {
+	base := sessionIDMachineName(machineName)
+	for range 16 {
+		id, err := randomHex(2)
+		if err != nil {
+			return "", err
+		}
+		sessionID := base + "-" + id
+		if _, ok := runtime.sessions[sessionID]; ok {
+			continue
+		}
+		if _, err := os.Stat(runtime.sessionPath(sessionID)); errors.Is(err, os.ErrNotExist) {
+			return sessionID, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not allocate session id for %s", machineName)
+}
+
+func sessionIDMachineName(machineName string) string {
+	name := strings.TrimSuffix(filepath.Base(machineName), ".mch")
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "machine"
+	}
+	return name
+}
+
+func randomHex(bytesCount int) (string, error) {
+	buffer := make([]byte, bytesCount)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buffer), nil
+}
+
 func (runtime *Runtime) resolveMachineFile(path string) string {
 	if strings.HasSuffix(path, ".mch") || strings.Contains(path, string(filepath.Separator)) {
 		return path
@@ -319,8 +552,23 @@ func (runtime *Runtime) resolveMachineFile(path string) string {
 	return filepath.Join(runtime.root, "machines", path+".mch")
 }
 
+func (runtime *Runtime) sessionPath(id string) string {
+	return filepath.Join(runtime.sessionsDir(), id+".json")
+}
+
+func (runtime *Runtime) sessionsDir() string {
+	return filepath.Join(runtime.root, ".tmp", "sessions")
+}
+
 func (runtime *Runtime) suspendedPath() string {
 	return filepath.Join(runtime.root, ".tmp", "circuit.suspended.json")
+}
+
+func (runtime *Runtime) removeLegacySuspendedRun() error {
+	if err := os.Remove(runtime.suspendedPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func cloneChecks(checks map[string]CheckRuntime) map[string]CheckRuntime {
