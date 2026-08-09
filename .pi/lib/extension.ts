@@ -130,6 +130,28 @@ function registerTools(pi: ExtensionAPI, adapter: CircuitAdapter): void {
 	});
 
 	pi.registerTool({
+		name: "circuit_unload",
+		label: "Circuit Unload",
+		description: "Remove a stopped circuit session from runtime storage.",
+		promptSnippet: "Unload a stopped circuit session",
+		parameters: {
+			type: "object",
+			properties: {
+				session: {
+					type: "string",
+					description: "Session ID to unload",
+				},
+			},
+			required: ["session"],
+		},
+		async execute(_toolCallId, params) {
+			const session = (params as { session?: string }).session;
+			if (!session) return missingParam("session");
+			return textResult(await adapter.run(["unload", session]));
+		},
+	});
+
+	pi.registerTool({
 		name: "circuit_stop",
 		label: "Circuit Stop",
 		description: "Stop an active circuit session.",
@@ -190,7 +212,8 @@ function registerMachineTool(
 
 function registerSlashCommand(pi: ExtensionAPI, adapter: CircuitAdapter): void {
 	pi.registerCommand("circuit", {
-		description: "Manage Circuit sessions: /circuit <list|load|scaffold|start|status|advance|stop>",
+		description:
+			"Manage Circuit sessions: /circuit <list|load|scaffold|start|status|advance|stop|unload>",
 		handler: async (args, ctx) => {
 			const parsed = parseCircuitCommand(args);
 			switch (parsed.verb) {
@@ -236,6 +259,14 @@ function registerSlashCommand(pi: ExtensionAPI, adapter: CircuitAdapter): void {
 						ctx,
 						adapter.run(parsed.session ? ["stop", parsed.session] : ["stop"]),
 					);
+					return;
+				}
+				case "unload": {
+					if (!parsed.session) {
+						ctx.ui.notify("Usage: /circuit unload <session>", "warning");
+						return;
+					}
+					await notifyResult(ctx, adapter.run(["unload", parsed.session]));
 					return;
 				}
 			}

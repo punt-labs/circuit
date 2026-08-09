@@ -72,6 +72,13 @@ describe("parseCircuitCommand", () => {
 		});
 	});
 
+	it("parses unload with session", () => {
+		expect(parseCircuitCommand("unload build-job-a3f8")).toEqual({
+			verb: "unload",
+			session: "build-job-a3f8",
+		});
+	});
+
 	it("defaults empty input to status", () => {
 		expect(parseCircuitCommand("")).toEqual({ verb: "status" });
 	});

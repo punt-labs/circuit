@@ -464,11 +464,11 @@ When `Advance` reaches a terminal state (no enabled operations), that session
 automatically transitions to `stopped`. Stopped sessions remain known so `stop`
 is idempotent for known sessions; unloaded or unknown sessions cannot be
 stopped. `Status` reports known active or stopped sessions; `Advance` requires
-at least one active session. `status` with no known session reports "no session"
-as informational output, not an error. Implicit `advance` requires exactly one
-active session; implicit
-`stop` requires exactly one active or stopped session; otherwise callers target
-a session ID such as `build-job-a3f8`.
+at least one active session. `Unload` removes stopped sessions from runtime
+storage. `status` with no known session reports "no session" as informational
+output, not an error. Implicit `advance` requires exactly one active session;
+implicit `stop` requires exactly one active or stopped session; otherwise
+callers target a session ID such as `build-job-a3f8`.
 
 Context injection in pi fires only when at least one session is active and
 includes every active session.
@@ -485,6 +485,7 @@ circuit start pr-watch
 circuit status
 circuit advance ReadyToMerge
 circuit stop
+circuit unload build-job-b4c9
 
 # Optional session qualifiers disambiguate multiple active sessions.
 circuit advance ReadyToMerge pr-watch-a3f8
@@ -532,6 +533,9 @@ unchanged.
 a known stopped session is an idempotent success; stopping an unloaded or unknown
 session is not.
 
+`unload <session>` removes a stopped session from runtime storage. Active
+sessions cannot be unloaded.
+
 ## Harness relationships
 
 B-backed runtime supports both candidate pi relationships.
@@ -552,7 +556,8 @@ Pi owns UI, status widgets, session integration, and user interaction. The B
 machine owns valid progress. The pi command surface should mirror the CLI:
 `/circuit list`, `/circuit load <machine>`, `/circuit scaffold <machine>`,
 `/circuit start <machine>`, `/circuit status`,
-`/circuit advance <event> [session]`, and `/circuit stop [session]`.
+`/circuit advance <event> [session]`, `/circuit stop [session]`, and
+`/circuit unload <session>`.
 
 ### Engine drives pi over RPC
 

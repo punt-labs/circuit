@@ -66,6 +66,7 @@ Slash commands (human control):
 - `/circuit advance <event> [session]` requests `Advance(event)` against the
   only active session or a selected session.
 - `/circuit stop [session]` stops the only active session or a selected session.
+- `/circuit unload <session>` removes a stopped session from runtime storage.
 
 LLM tools (full parity with slash commands):
 
@@ -81,6 +82,7 @@ LLM tools (full parity with slash commands):
   when multiple sessions are active.
 - `circuit_stop` stops an active circuit session; it accepts an optional
   session ID. Stopping a known stopped session is idempotent.
+- `circuit_unload` removes a stopped session from runtime storage.
 
 Context injection:
 

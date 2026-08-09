@@ -194,8 +194,8 @@ backend.
 ## ADR 10: LLM tools with full slash command parity
 
 **Decision:** Every slash command has a corresponding LLM tool. The
-agent can discover, load, scaffold, start, operate, and stop circuits
-without human intervention.
+agent can discover, load, scaffold, start, operate, stop, and unload
+circuits without human intervention.
 
 **Evidence:** Milestone 4 proved this. The agent called `circuit_status`
 then `circuit_advance` unprompted and progressed `build-job` from
@@ -206,7 +206,7 @@ formatting, and Go command behavior are tested.
 
 - Tool names use underscores: `circuit_list`, `circuit_load`,
   `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`.
+  `circuit_advance`, `circuit_stop`, `circuit_unload`.
 - Slash commands use the `/circuit <verb>` namespace.
 - Both call the same Go CLI underneath.
 

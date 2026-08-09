@@ -50,6 +50,8 @@ func (cmd command) run(args []string) error {
 		return cmd.advance(args[1:])
 	case "stop":
 		return cmd.stop(args[1:])
+	case "unload":
+		return cmd.unload(args[1:])
 	default:
 		cmd.printUsage()
 		return fmt.Errorf("unknown command: %s", args[0])
@@ -198,6 +200,22 @@ func (cmd command) advance(args []string) error {
 	return nil
 }
 
+func (cmd command) unload(args []string) error {
+	session, err := singleArg(args)
+	if err != nil {
+		return err
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	if err := runtime.UnloadByID(session); err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, "unloaded")
+	return nil
+}
+
 func (cmd command) stop(args []string) error {
 	if len(args) > 1 {
 		return fmt.Errorf("expected at most one argument, got %d", len(args))
@@ -286,7 +304,8 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [session]            print circuit session status")
 	fmt.Fprintln(cmd.stderr, "  advance <event> [session]   apply Advance(event) to a circuit session")
-	fmt.Fprintln(cmd.stderr, "  stop [session]              clear a circuit session")
+	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
+	fmt.Fprintln(cmd.stderr, "  unload <session>            remove a stopped circuit session")
 }
 
 func (cmd command) workingDir() string {

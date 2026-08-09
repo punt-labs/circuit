@@ -44,10 +44,10 @@ Implemented now:
 - Nix development shell with golangci-lint matching ethos conventions
 - `make check` gate for engine, RPC protocol, pi extension, and docs
 - project-local pi extension at `.pi/extensions/circuit.ts` with context
-  injection via `before_agent_start`, seven LLM tools (`circuit_list`,
+  injection via `before_agent_start`, eight LLM tools (`circuit_list`,
   `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`), and `/circuit` slash commands for human
-  control
+  `circuit_advance`, `circuit_stop`, `circuit_unload`), and `/circuit` slash
+  commands for human control
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
 - multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
@@ -55,7 +55,7 @@ Implemented now:
 - RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
   test
 - CLI commands: `list`, `load`, `scaffold`, `start`, `status`, `advance`,
-  `stop`
+  `stop`, `unload`
 - check bindings for runtime preconditions with invocation tracking; machines
   with BOOL facts must load with complete bindings before they can start
 - `retry-flow` machine proving block/retry loops work
@@ -297,6 +297,7 @@ Slash commands (human control):
 - `/circuit status [session]`
 - `/circuit advance <event> [session]`
 - `/circuit stop [session]`
+- `/circuit unload <session>`
 
 LLM tools (agent calls these directly):
 
@@ -307,6 +308,7 @@ LLM tools (agent calls these directly):
 - `circuit_status`
 - `circuit_advance`
 - `circuit_stop`
+- `circuit_unload`
 
 Full parity: anything the human can do, the agent can do. The B-backed
 Go runtime decides whether progress is valid.
@@ -360,7 +362,8 @@ Done:
 - ProB development gate: `make check-machines`
 - multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
 - multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
-- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`
+- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`,
+  `unload`
 - check bindings: `review-flow.checks.yaml`, `check-registry.yaml`, and
   generated false stubs from `scaffold`
 - golangci-lint adopted matching ethos conventions
@@ -383,7 +386,7 @@ In progress:
   valid operations into the agent's context on every turn
 - LLM tools: full parity with slash commands — `circuit_list`,
   `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`
+  `circuit_advance`, `circuit_stop`, `circuit_unload`
 - gating: `circuit_advance` tool enforces B-machine preconditions; blocked
   transitions produce agent-visible feedback with failed conditions
 - session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with

@@ -100,7 +100,15 @@ The following implementation details are intentionally abstracted away:
 \end{zed}
 
 \begin{zed}
+  STATUSRESULT ::= statusOK | statusNoSession | statusUnknownSession
+\end{zed}
+
+\begin{zed}
   STOPRESULT ::= stopOK | stopNoSession | stopAmbiguousSession | stopUnknownSession
+\end{zed}
+
+\begin{zed}
+  UNLOADRESULT ::= unloadOK | unloadActiveSession | unloadUnknownSession
 \end{zed}
 
 \begin{zed}
@@ -503,7 +511,56 @@ to $terminal$.
 \end{zed}
 
 % ============================================================
-\section{Stop and Context Injection}
+\section{Status}
+% ============================================================
+
+Status is observation, not progression. It reports known active or stopped
+sessions. Unknown or unloaded sessions are not statusable.
+
+\begin{schema}{StatusAllOK}
+  \Xi Circuit \\
+  result! : STATUSRESULT
+\where
+  sessions \neq \emptyset \\
+  result! = statusOK
+\end{schema}
+
+\begin{schema}{StatusAllEmpty}
+  \Xi Circuit \\
+  result! : STATUSRESULT
+\where
+  sessions = \emptyset \\
+  result! = statusNoSession
+\end{schema}
+
+\begin{zed}
+  StatusAll \defs StatusAllOK \lor StatusAllEmpty
+\end{zed}
+
+\begin{schema}{StatusTargetedOK}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : STATUSRESULT
+\where
+  s? \in sessions \\
+  result! = statusOK
+\end{schema}
+
+\begin{schema}{StatusTargetedUnknown}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : STATUSRESULT
+\where
+  s? \notin sessions \\
+  result! = statusUnknownSession
+\end{schema}
+
+\begin{zed}
+  StatusTargeted \defs StatusTargetedOK \lor StatusTargetedUnknown
+\end{zed}
+
+% ============================================================
+\section{Stop, Unload, and Context Injection}
 % ============================================================
 
 Stop distinguishes stopped from unloaded. Stopping an active session moves it to
@@ -603,6 +660,46 @@ $stopNoSession$.
 \begin{zed}
   StopTargeted \defs StopTargetedOK \lor StopTargetedStoppedOK
     \lor StopTargetedUnknown
+\end{zed}
+
+\begin{schema}{UnloadStoppedOK}
+  \Delta Circuit \\
+  s? : SESSION \\
+  result! : UNLOADRESULT
+\where
+  s? \in terminal \\
+  sessions' = sessions \setminus \{ s? \} \\
+  terminal' = terminal \setminus \{ s? \} \\
+  active' = active \\
+  sessionMachine' = \{ s? \} \ndres sessionMachine \\
+  injected' = injected \setminus \{ s? \} \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  result! = unloadOK
+\end{schema}
+
+\begin{schema}{UnloadActiveError}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : UNLOADRESULT
+\where
+  s? \in active \\
+  result! = unloadActiveSession
+\end{schema}
+
+\begin{schema}{UnloadUnknown}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : UNLOADRESULT
+\where
+  s? \notin sessions \\
+  result! = unloadUnknownSession
+\end{schema}
+
+\begin{zed}
+  UnloadTargeted \defs UnloadStoppedOK \lor UnloadActiveError \lor UnloadUnknown
 \end{zed}
 
 \begin{schema}{InjectActiveSessions}
@@ -725,7 +822,7 @@ Observed result on 2026-08-09:
 \begin{itemize}
   \item all operations covered;
   \item 133 states analysed;
-  \item 2189 transitions fired;
+  \item 2854 transitions fired;
   \item no counterexample found;
   \item all open states visited.
 \end{itemize}
@@ -749,6 +846,9 @@ False stub & advance is blocked \\
 Replace stub & advance is allowed \\
 Start valid machine & new active session is created \\
 Terminal advance & session auto-stops \\
+Status stopped & stopped sessions remain inspectable \\
+Unload stopped & stopped sessions are removed from storage \\
+Unload active & active sessions cannot be unloaded \\
 Two active sessions & implicit advance returns ambiguity \\
 Targeted advance & only selected session changes \\
 Context injection & all and only active sessions are injected \\

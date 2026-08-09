@@ -73,6 +73,7 @@ describe("registerCircuitExtension", () => {
 			"circuit_start",
 			"circuit_status",
 			"circuit_stop",
+			"circuit_unload",
 		]);
 	});
 
@@ -163,6 +164,9 @@ describe("registerCircuitExtension", () => {
 			.get("circuit_status")
 			?.execute("tool", { session: "build-job-a111" });
 		const stop = await pi.tools.get("circuit_stop")?.execute("tool", { session: "build-job-a111" });
+		const unload = await pi.tools.get("circuit_unload")?.execute("tool", {
+			session: "build-job-a111",
+		});
 		const advance = await pi.tools.get("circuit_advance")?.execute("tool", {
 			event: "start",
 			session: "build-job-a111",
@@ -171,10 +175,12 @@ describe("registerCircuitExtension", () => {
 		expect(list?.content[0]?.text).toBe("build-job\nreview-flow");
 		expect(status?.content[0]?.text).toBe("advanced: idle -> running");
 		expect(stop?.content[0]?.text).toBe("advanced: idle -> running");
+		expect(unload?.content[0]?.text).toBe("advanced: idle -> running");
 		expect(advance?.details).toMatchObject({ ok: true, allowed: true });
 		expect(adapter.calls).toEqual([
 			["status", "build-job-a111"],
 			["stop", "build-job-a111"],
+			["unload", "build-job-a111"],
 			["advance", "start", "build-job-a111"],
 		]);
 	});
@@ -184,9 +190,12 @@ describe("registerCircuitExtension", () => {
 		registerCircuitExtension(pi as unknown as ExtensionAPI, new FakeAdapter());
 
 		const output = await pi.tools.get("circuit_advance")?.execute("tool", {});
+		const unload = await pi.tools.get("circuit_unload")?.execute("tool", {});
 
 		expect(output?.content[0]?.text).toBe("missing event parameter");
 		expect(output?.details).toEqual({ ok: false });
+		expect(unload?.content[0]?.text).toBe("missing session parameter");
+		expect(unload?.details).toEqual({ ok: false });
 	});
 
 	it("routes tool calls through adapter", async () => {
@@ -219,6 +228,7 @@ describe("registerCircuitExtension", () => {
 		await pi.commands.get("circuit")?.handler("status build-job-a111", ctx);
 		await pi.commands.get("circuit")?.handler("advance start build-job-a111", ctx);
 		await pi.commands.get("circuit")?.handler("stop build-job-a111", ctx);
+		await pi.commands.get("circuit")?.handler("unload build-job-a111", ctx);
 
 		expect(adapter.calls).toEqual([
 			["load", "review-flow"],
@@ -227,6 +237,7 @@ describe("registerCircuitExtension", () => {
 			["status", "build-job-a111"],
 			["advance", "start", "build-job-a111"],
 			["stop", "build-job-a111"],
+			["unload", "build-job-a111"],
 		]);
 		expect(notifications).toContain("build-job\nreview-flow");
 		expect(notifications).toContain("ok");
@@ -242,12 +253,14 @@ describe("registerCircuitExtension", () => {
 		await pi.commands.get("circuit")?.handler("scaffold", ctx);
 		await pi.commands.get("circuit")?.handler("start", ctx);
 		await pi.commands.get("circuit")?.handler("advance", ctx);
+		await pi.commands.get("circuit")?.handler("unload", ctx);
 
 		expect(notifications).toEqual([
 			"Usage: /circuit load <machine>",
 			"Usage: /circuit scaffold <machine>",
 			"Usage: /circuit start <machine>",
 			"Usage: /circuit advance <event> [session]",
+			"Usage: /circuit unload <session>",
 		]);
 	});
 });

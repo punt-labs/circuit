@@ -352,6 +352,50 @@ func TestBMachineStop(t *testing.T) {
 	}
 }
 
+func TestBMachineUnloadStoppedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+		t.Fatalf("stop returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"unload", sessionID}); err != nil {
+		t.Fatalf("unload returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "unloaded") {
+		t.Fatalf("unload output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"status"}); err != nil {
+		t.Fatalf("status returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "no session") {
+		t.Fatalf("status after unload mismatch: %q", stdout.String())
+	}
+}
+
+func TestBMachineUnloadRejectsActiveSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	err := cmd.run([]string{"unload", sessionID})
+	if err == nil || !strings.Contains(err.Error(), "cannot unload active session") {
+		t.Fatalf("unload active error = %v, want active rejection", err)
+	}
+}
+
 func TestBMachineStopWithoutSessionFails(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
@@ -431,6 +475,17 @@ func TestAdvanceRejectsNoArgs(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("advance with no args returned nil error")
+	}
+}
+
+func TestUnloadRejectsNoArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"unload"})
+
+	if err == nil {
+		t.Fatal("unload with no args returned nil error")
 	}
 }
 

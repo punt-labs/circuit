@@ -646,6 +646,47 @@ func TestStatusFailsWhenMachineFileDisappears(t *testing.T) {
 	}
 }
 
+func TestUnloadRemovesStoppedSession(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	id, _, err := runtime.Start("build-job")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := runtime.StopByID(id); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if err := runtime.UnloadByID(id); err != nil {
+		t.Fatalf("unload: %v", err)
+	}
+	if _, err := runtime.StatusByID(id); err == nil {
+		t.Fatal("status unloaded session returned nil error")
+	}
+	if _, err := os.Stat(runtime.sessionPath(id)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unloaded session file err = %v, want not exist", err)
+	}
+}
+
+func TestUnloadRejectsActiveSession(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	id, _, err := runtime.Start("build-job")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := runtime.UnloadByID(id); err == nil || !strings.Contains(err.Error(), "cannot unload active session") {
+		t.Fatalf("unload active error = %v, want active rejection", err)
+	}
+}
+
 func TestStopByIDRejectsUnknownSession(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)

@@ -1,5 +1,5 @@
 export interface CircuitCommand {
-	verb: "list" | "load" | "scaffold" | "start" | "status" | "advance" | "stop";
+	verb: "list" | "load" | "scaffold" | "start" | "status" | "advance" | "stop" | "unload";
 	argument?: string;
 	session?: string;
 }
@@ -17,7 +17,7 @@ export function parseCircuitCommand(args: string): CircuitCommand {
 		if (!argument) return { verb };
 		return session ? { verb, argument, session } : { verb, argument };
 	}
-	if (verb === "status" || verb === "stop") {
+	if (verb === "status" || verb === "stop" || verb === "unload") {
 		const session = fields[1];
 		return session ? { verb, session } : { verb };
 	}

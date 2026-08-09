@@ -156,6 +156,27 @@ func (runtime *Runtime) StopByID(id string) error {
 	return runtime.removeLegacySuspendedRun()
 }
 
+func (runtime *Runtime) UnloadByID(id string) error {
+	run, ok := runtime.sessions[id]
+	if !ok {
+		return fmt.Errorf("unknown session: %s", id)
+	}
+	if run.Session == SessionActive {
+		return fmt.Errorf("cannot unload active session: %s", id)
+	}
+	delete(runtime.sessions, id)
+	if runtime.currentID == id {
+		runtime.currentID = ""
+	}
+	if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if len(runtime.knownSessionIDs()) == 0 {
+		runtime.lastState = SessionUnloaded
+	}
+	return runtime.removeLegacySuspendedRun()
+}
+
 func (runtime *Runtime) ListMachines() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(runtime.root, "machines"))
 	if err != nil {
