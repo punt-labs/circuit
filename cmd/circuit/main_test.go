@@ -191,8 +191,11 @@ func TestBMachineStop(t *testing.T) {
 	if !strings.Contains(stdout.String(), "stopped") {
 		t.Fatalf("stop output mismatch: %q", stdout.String())
 	}
-	if err := cmd.run([]string{"status"}); err == nil {
-		t.Fatal("status after stop returned nil error")
+	if err := cmd.run([]string{"status"}); err != nil {
+		t.Fatalf("status after stop returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "no active session") {
+		t.Fatalf("status after stop output mismatch: %q", stdout.String())
 	}
 }
 

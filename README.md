@@ -47,7 +47,8 @@ Implemented now:
   `/circuit` slash commands for human control
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
-- suspend/resume runtime under `internal/circuitrun/`
+- session lifecycle runtime under `internal/circuitrun/` with auto-stop on
+  terminal states
 - RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
   test
 - CLI commands: `list`, `start`, `status`, `advance`, `stop`
@@ -152,11 +153,20 @@ booleans and bound to registered checks outside B. For example,
 `coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
 `makeCheck` registry entry in `check-registry.yaml`.
 
-Circuit runtime is in-memory first. Short-lived CLI commands implicitly resume a
-suspended runtime, operate in memory, then suspend again to
-`.tmp/circuit.suspended.json`. That file is a pause/resume artifact, not the
-conceptual source of state. A future long-running runtime should use the same
-model and suspend only on exit or explicit pause.
+Circuit manages one session at a time. Each session has a lifecycle:
+
+- `unloaded` — no machine selected
+- `active` — machine is running, internal workflow state is progressing
+- `suspended` — machine paused to disk, resumes on next CLI invocation
+- `stopped` — machine reached a terminal state or was explicitly stopped
+
+Short-lived CLI commands implicitly resume and suspend:
+`suspended → active → suspended`. When a machine reaches a terminal state
+(no enabled operations), the session auto-stops. `status` with no active
+session reports "no active session" instead of an error.
+
+The suspended form is stored at `.tmp/circuit.suspended.json` — a pause/resume
+artifact, not the conceptual source of state.
 
 The harness adapter is responsible for UI and observation. The machine remains
 the authority for valid progress.
@@ -315,7 +325,7 @@ Done:
 - `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`
 - ProB development gate: `make check-machines`
 - multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
-- suspend/resume runtime (`internal/circuitrun`)
+- session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
 - CLI: `list`, `start`, `status`, `advance`, `stop`
 - check bindings: `review-flow.checks.yaml`, `check-registry.yaml`
 - golangci-lint adopted matching ethos conventions

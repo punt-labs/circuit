@@ -99,6 +99,10 @@ func (cmd command) status(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !runtime.IsActive() {
+		fmt.Fprintln(cmd.stdout, "no active session")
+		return nil
+	}
 	report, err := runtime.Status()
 	if err != nil {
 		return err
