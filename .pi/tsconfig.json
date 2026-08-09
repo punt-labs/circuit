@@ -15,5 +15,11 @@
 		"useUnknownInCatchVariables": true,
 		"verbatimModuleSyntax": true
 	},
-	"include": ["extensions/**/*.ts", "types/**/*.d.ts", "eslint.config.mjs"]
+	"include": [
+		"extensions/**/*.ts",
+		"lib/**/*.ts",
+		"tests/**/*.ts",
+		"types/**/*.d.ts",
+		"eslint.config.mjs"
+	]
 }

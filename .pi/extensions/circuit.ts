@@ -3,8 +3,8 @@ import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parseCircuitCommand } from "./parse.js";
-import { formatContextInjection, parseAdvanceOutput, parseCircuitStatus } from "./context.js";
+import { parseCircuitCommand } from "../lib/parse.js";
+import { formatContextInjection, parseAdvanceOutput, parseCircuitStatus } from "../lib/context.js";
 
 const execFileAsync = promisify(execFile);
 const MACHINE_DIR = "machines";

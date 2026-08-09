@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCircuitCommand } from "./parse.js";
+import { parseCircuitCommand } from "../lib/parse.js";
 
 describe("parseCircuitCommand", () => {
 	it("parses start with machine name", () => {

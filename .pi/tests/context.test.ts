@@ -4,7 +4,7 @@ import {
 	formatToolResult,
 	parseAdvanceOutput,
 	parseCircuitStatus,
-} from "./context.js";
+} from "../lib/context.js";
 
 describe("parseCircuitStatus", () => {
 	it("parses full status output", () => {
