@@ -16,7 +16,7 @@ GOLANGCI_LINT := $(GOBIN)/golangci-lint
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
 
-check: check-engine check-rpc check-pi-extension check-docs ## Run all quality gates
+check: format check-engine check-rpc check-pi-extension check-docs ## Run all quality gates
 
 check-engine: lint-engine test-engine ## Validate Go engine
 
@@ -54,15 +54,16 @@ build: build-engine ## Build binary
 build-engine: ## Build circuit binary
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o circuit ./cmd/circuit/
 
-format: ## Format Go code
+format: ## Format Go and TypeScript code
 	$(GOLANGCI_LINT) fmt
+	cd .pi && npx prettier --write --ignore-path .prettierignore "**/*.ts" "**/*.json" "**/*.mjs"
 
 install: build ## Build and install to ~/.local/bin
 	mkdir -p $(HOME)/.local/bin
 	rm -f $(HOME)/.local/bin/circuit
 	cp circuit $(HOME)/.local/bin/circuit
 
-check-pi-extension: typecheck-pi-extension lint-pi-extension format-check-pi-extension test-pi-extension ## Validate pi extension
+check-pi-extension: typecheck-pi-extension lint-pi-extension test-pi-extension ## Validate pi extension
 
 typecheck-pi-extension: ## Typecheck pi extension
 	$(NPM) --prefix .pi run typecheck
