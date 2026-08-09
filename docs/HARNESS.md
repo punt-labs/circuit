@@ -56,6 +56,10 @@ Current extension commands:
 Slash commands (human control):
 
 - `/circuit list` lists available machines from `machines/*.mch`.
+- `/circuit load <machine>` validates a machine and its check bindings without
+  starting a session.
+- `/circuit scaffold <machine>` generates missing BOOL check bindings and
+  failing registry stubs.
 - `/circuit start <machine>` starts a new circuit session from a named machine.
 - `/circuit status [session]` shows all active sessions or one selected session.
 - `/circuit advance <event> [session]` requests `Advance(event)` against the
@@ -65,6 +69,9 @@ Slash commands (human control):
 LLM tools (full parity with slash commands):
 
 - `circuit_list` lists available machines.
+- `circuit_load` validates a machine and its check bindings.
+- `circuit_scaffold` generates missing BOOL check bindings and failing registry
+  stubs.
 - `circuit_start` starts an active circuit from a named machine.
 - `circuit_status` reports active session state and valid operations; it accepts
   an optional session ID.
@@ -112,6 +119,7 @@ machine semantics to Go. The expected manual smoke path is:
 
 ```text
 /circuit list
+/circuit load build-job
 /circuit start build-job
 /circuit status
 /circuit advance start

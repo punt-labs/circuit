@@ -50,6 +50,68 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "circuit_load",
+		label: "Circuit Load",
+		description: "Validate a circuit machine and its check bindings without starting a session.",
+		promptSnippet: "Validate a circuit machine before starting it",
+		parameters: {
+			type: "object",
+			properties: {
+				machine: {
+					type: "string",
+					description: "Machine name, e.g. 'build-job', 'review-flow'",
+				},
+			},
+			required: ["machine"],
+		},
+		async execute(_toolCallId, params) {
+			const machine = (params as { machine: string }).machine;
+			if (!machine) {
+				return {
+					content: [{ type: "text" as const, text: "missing machine parameter" }],
+					details: { ok: false },
+				};
+			}
+			const result = await runCircuit(["load", machine]);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "circuit_scaffold",
+		label: "Circuit Scaffold",
+		description: "Generate missing BOOL check bindings and failing registry stubs for a machine.",
+		promptSnippet: "Generate check stubs for a circuit machine",
+		parameters: {
+			type: "object",
+			properties: {
+				machine: {
+					type: "string",
+					description: "Machine name, e.g. 'review-flow'",
+				},
+			},
+			required: ["machine"],
+		},
+		async execute(_toolCallId, params) {
+			const machine = (params as { machine: string }).machine;
+			if (!machine) {
+				return {
+					content: [{ type: "text" as const, text: "missing machine parameter" }],
+					details: { ok: false },
+				};
+			}
+			const result = await runCircuit(["scaffold", machine]);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: "circuit_start",
 		label: "Circuit Start",
 		description: "Start an active circuit from a named machine.",
@@ -178,13 +240,31 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	// -- Slash commands: human affordances --
 
 	pi.registerCommand("circuit", {
-		description: "Manage Circuit sessions: /circuit <list|start|status|advance|stop>",
+		description: "Manage Circuit sessions: /circuit <list|load|scaffold|start|status|advance|stop>",
 		handler: async (args, ctx) => {
 			const parsed = parseCircuitCommand(args);
 			switch (parsed.verb) {
 				case "list": {
 					const machines = await listMachines();
 					ctx.ui.notify(machines.length > 0 ? machines.join("\n") : "No machines found", "info");
+					return;
+				}
+				case "load": {
+					if (!parsed.argument) {
+						ctx.ui.notify("Usage: /circuit load <machine>", "warning");
+						return;
+					}
+					const result = await runCircuit(["load", parsed.argument]);
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
+					return;
+				}
+				case "scaffold": {
+					if (!parsed.argument) {
+						ctx.ui.notify("Usage: /circuit scaffold <machine>", "warning");
+						return;
+					}
+					const result = await runCircuit(["scaffold", parsed.argument]);
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
 					return;
 				}
 				case "start": {

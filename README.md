@@ -43,17 +43,20 @@ Implemented now:
 - Nix development shell with golangci-lint matching ethos conventions
 - `make check` gate for engine, RPC protocol, pi extension, and docs
 - project-local pi extension at `.pi/extensions/circuit.ts` with context
-  injection via `before_agent_start`, five LLM tools (`circuit_list`,
-  `circuit_start`, `circuit_status`, `circuit_advance`, `circuit_stop`),
-  and `/circuit` slash commands for human control
+  injection via `before_agent_start`, seven LLM tools (`circuit_list`,
+  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
+  `circuit_advance`, `circuit_stop`), and `/circuit` slash commands for human
+  control
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
 - multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
   session IDs and auto-stop on terminal states
 - RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
   test
-- CLI commands: `list`, `start`, `status`, `advance`, `stop`
-- check bindings for runtime preconditions with invocation tracking
+- CLI commands: `list`, `load`, `scaffold`, `start`, `status`, `advance`,
+  `stop`
+- check bindings for runtime preconditions with invocation tracking; machines
+  with BOOL facts must load with complete bindings before they can start
 - `retry-flow` machine proving block/retry loops work
 - ProB development gate: `make check-machines`
 - automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
@@ -121,6 +124,8 @@ Runtime does not require ProB:
 
 ```bash
 circuit list
+circuit load review-flow
+circuit scaffold review-flow
 circuit start build-job
 circuit status
 circuit advance start
@@ -159,7 +164,10 @@ Runtime preconditions that depend on the outside world are represented as B
 booleans and bound to registered checks outside B. For example,
 `review-flow.mch` requires `makeCheckPassed = TRUE` before advancing from
 `coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
-`makeCheck` registry entry in `check-registry.yaml`.
+`makeCheck` registry entry in `check-registry.yaml`. A machine with BOOL facts
+must load with complete bindings before it can start. Use
+`circuit scaffold <machine>` to generate missing bindings and registry stubs;
+stubs default to `false`, so incomplete integrations block safely.
 
 Circuit manages multiple sessions. A session is one running instance of a
 machine, identified as `<machine>-<4hex>` such as `build-job-a3f8`. Each session
@@ -279,6 +287,8 @@ commands:
 Slash commands (human control):
 
 - `/circuit list`
+- `/circuit load <machine>`
+- `/circuit scaffold <machine>`
 - `/circuit start <machine>`
 - `/circuit status [session]`
 - `/circuit advance <event> [session]`
@@ -287,6 +297,8 @@ Slash commands (human control):
 LLM tools (agent calls these directly):
 
 - `circuit_list`
+- `circuit_load`
+- `circuit_scaffold`
 - `circuit_start`
 - `circuit_status`
 - `circuit_advance`
@@ -344,8 +356,9 @@ Done:
 - ProB development gate: `make check-machines`
 - multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
 - multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
-- CLI: `list`, `start`, `status`, `advance`, `stop`
-- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`
+- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`
+- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`, and
+  generated false stubs from `scaffold`
 - golangci-lint adopted matching ethos conventions
 - test coverage ≥85% on core packages
 
@@ -365,7 +378,8 @@ In progress:
 - context injection: `before_agent_start` injects current circuit state and
   valid operations into the agent's context on every turn
 - LLM tools: full parity with slash commands — `circuit_list`,
-  `circuit_start`, `circuit_status`, `circuit_advance`, `circuit_stop`
+  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
+  `circuit_advance`, `circuit_stop`
 - gating: `circuit_advance` tool enforces B-machine preconditions; blocked
   transitions produce agent-visible feedback with failed conditions
 - session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with

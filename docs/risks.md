@@ -40,11 +40,14 @@ agent has a competing goal or when multiple operations are enabled.
 
 `review-flow` binds `makeCheckPassed` to `make check`, which works.
 Real workflows need richer facts: PR check status, review thread
-counts, file change analysis. The check-binding model has not been
-tested with multiple heterogeneous observations or with latency
-concerns.
+counts, file change analysis. The check-binding model now has a
+scaffold path: BOOL variables can generate `.checks.yaml` bindings and
+false registry stubs, and machines cannot start until those bindings
+load cleanly. It has not been tested with multiple heterogeneous
+observations or with latency concerns.
 
-Risk: check bindings are too slow or too coarse for real workflows.
+Risk: check bindings are easier to author but may still be too slow or
+too coarse for real workflows.
 
 ## 4. Multi-step workflows with branches
 

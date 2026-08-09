@@ -61,6 +61,31 @@ func TestAdvanceFinishBlockedInitially(t *testing.T) {
 	}
 }
 
+func TestBooleanVariables(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "review-flow.mch"))
+	if err != nil {
+		t.Fatalf("load review-flow: %v", err)
+	}
+
+	variables := machine.BooleanVariables()
+
+	if len(variables) != 1 || variables[0] != "makeCheckPassed" {
+		t.Fatalf("BooleanVariables = %v, want makeCheckPassed", variables)
+	}
+}
+
+func TestBuildJobHasNoBooleanVariables(t *testing.T) {
+	t.Parallel()
+	machine := loadFixture(t)
+
+	variables := machine.BooleanVariables()
+
+	if len(variables) != 0 {
+		t.Fatalf("BooleanVariables = %v, want empty", variables)
+	}
+}
+
 func TestReviewFlowBooleanPrecondition(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "review-flow.mch"))

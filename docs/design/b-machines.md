@@ -430,8 +430,9 @@ Runtime behavior for `circuit advance requestReview`:
 6. Advance if allowed; otherwise block and report failed preconditions.
 
 B remains pure and ProB-checkable. Commands remain outside B. Circuit validates
-that every bound check names a B variable, references a registry entry, and
-returns a compatible type.
+that every BOOL fact has a binding, every binding names a B variable, every
+binding references a registry entry, and every registry entry returns a
+compatible type.
 
 `status` should report check state as runtime metadata, for example:
 
@@ -475,6 +476,8 @@ The user-facing Go CLI operates on active circuit sessions:
 
 ```bash
 circuit list
+circuit load pr-watch
+circuit scaffold pr-watch
 circuit start pr-watch
 circuit status
 circuit advance ReadyToMerge
@@ -487,7 +490,14 @@ circuit stop build-job-b4c9
 
 `list` shows available B machines from `machines/*.mch`.
 
-`start` selects a machine, initializes a new active session, and records the
+`load` validates the B machine, its BOOL check bindings, and registry entries
+without starting a session.
+
+`scaffold` generates missing `.checks.yaml` bindings and missing
+`check-registry.yaml` entries for resolved BOOL variables. Generated commands are
+`false`, so unimplemented checks block safely.
+
+`start` loads the machine, initializes a new active session, and records the
 machine plus current B state.
 
 `status` reports all active sessions or one selected session. State is the
@@ -535,7 +545,8 @@ pi extension
 
 Pi owns UI, status widgets, session integration, and user interaction. The B
 machine owns valid progress. The pi command surface should mirror the CLI:
-`/circuit list`, `/circuit start <machine>`, `/circuit status`,
+`/circuit list`, `/circuit load <machine>`, `/circuit scaffold <machine>`,
+`/circuit start <machine>`, `/circuit status`,
 `/circuit advance <event> [session]`, and `/circuit stop [session]`.
 
 ### Engine drives pi over RPC

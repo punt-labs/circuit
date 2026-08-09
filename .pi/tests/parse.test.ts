@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { parseCircuitCommand } from "../lib/parse.js";
 
 describe("parseCircuitCommand", () => {
+	it("parses load with machine name", () => {
+		expect(parseCircuitCommand("load review-flow")).toEqual({
+			verb: "load",
+			argument: "review-flow",
+		});
+	});
+
+	it("parses scaffold with machine name", () => {
+		expect(parseCircuitCommand("scaffold review-flow")).toEqual({
+			verb: "scaffold",
+			argument: "review-flow",
+		});
+	});
+
 	it("parses start with machine name", () => {
 		expect(parseCircuitCommand("start build-job")).toEqual({
 			verb: "start",

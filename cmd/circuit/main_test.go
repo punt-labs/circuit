@@ -24,6 +24,64 @@ func TestBMachineList(t *testing.T) {
 	}
 }
 
+func TestBMachineLoadValidatesChecks(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"load", "review-flow"}); err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "loaded: review-flow") || !strings.Contains(output, "makeCheckPassed -> makeCheck: BOOL") {
+		t.Fatalf("load output mismatch: %q", output)
+	}
+}
+
+func TestBMachineScaffoldGeneratesFailingCheckStubs(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("remove registry: %v", err)
+	}
+
+	if err := cmd.run([]string{"scaffold", "review-flow"}); err != nil {
+		t.Fatalf("scaffold returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "scaffolded: review-flow") {
+		t.Fatalf("scaffold output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "review-flow"}); err != nil {
+		t.Fatalf("start with stubs returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "requestReview"}); err != nil {
+		t.Fatalf("advance with stubs returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "blocked: Advance(requestReview)") {
+		t.Fatalf("stub did not block: %q", stdout.String())
+	}
+}
+
+func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+
+	err := cmd.run([]string{"start", "review-flow"})
+
+	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
+		t.Fatalf("start error = %v, want unbound BOOL variable", err)
+	}
+}
+
 func TestBMachineStartStatusAdvance(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}

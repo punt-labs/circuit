@@ -62,20 +62,25 @@ participle, pigeon) can replace pass 1 without affecting passes 2–4.
 **Decision:** Runtime preconditions that depend on the outside world are
 represented as B boolean variables. A companion `.checks.yaml` file
 binds each variable to a registered check command. B never contains
-shell commands.
+shell commands. A machine with BOOL variables must load with complete
+bindings before it can start.
 
 **Evidence:** `review-flow.mch` requires `makeCheckPassed = TRUE`.
 `review-flow.checks.yaml` binds it to `makeCheck` in
 `check-registry.yaml`. `retry-flow.mch` uses an alternating check to
-prove the block/retry loop. Both pass ProB model-check and Go runtime
-evaluation.
+prove the block/retry loop. `scaffold` can generate missing bindings
+and false registry stubs from resolved BOOL variables. These paths are
+covered by Go runtime and CLI tests.
 
 **Constraints:**
 
 - B remains pure and ProB-checkable.
 - Commands live in the check registry, not in B.
+- Every BOOL variable must have a binding before the machine can load.
 - Every bound check must reference a registry entry with a compatible
   return type.
+- `scaffold` may generate missing bindings and registry stubs, but the
+  stubs default to `false` so incomplete integrations block safely.
 - Checks run before advance and their results (boolean + invocation
   count) are persisted in the session.
 
@@ -183,17 +188,19 @@ backend.
 ## ADR 10: LLM tools with full slash command parity
 
 **Decision:** Every slash command has a corresponding LLM tool. The
-agent can discover, start, operate, and stop circuits without human
-intervention.
+agent can discover, load, scaffold, start, operate, and stop circuits
+without human intervention.
 
 **Evidence:** Milestone 4 proved this. The agent called `circuit_status`
 then `circuit_advance` unprompted and progressed `build-job` from
-`idle` to `running`. All five tools are registered and tested.
+`idle` to `running`. All seven tools are registered; parsing,
+formatting, and Go command behavior are tested.
 
 **Constraints:**
 
-- Tool names use underscores: `circuit_list`, `circuit_start`,
-  `circuit_status`, `circuit_advance`, `circuit_stop`.
+- Tool names use underscores: `circuit_list`, `circuit_load`,
+  `circuit_scaffold`, `circuit_start`, `circuit_status`,
+  `circuit_advance`, `circuit_stop`.
 - Slash commands use the `/circuit <verb>` namespace.
 - Both call the same Go CLI underneath.
 

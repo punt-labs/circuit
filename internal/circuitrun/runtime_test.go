@@ -308,12 +308,9 @@ func TestRuntimeRejectsUnknownCheckRegistryEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, _, err := runtime.Start("review-flow"); err != nil {
-		t.Fatalf("start review-flow: %v", err)
-	}
-	_, err = runtime.Advance("requestReview")
+	_, _, err = runtime.Start("review-flow")
 	if err == nil || !strings.Contains(err.Error(), "unknown registry") {
-		t.Fatalf("advance error = %v, want unknown registry", err)
+		t.Fatalf("start error = %v, want unknown registry", err)
 	}
 }
 
@@ -328,12 +325,9 @@ func TestRuntimeRejectsNonBooleanCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume empty runtime: %v", err)
 	}
-	if _, _, err := runtime.Start("review-flow"); err != nil {
-		t.Fatalf("start review-flow: %v", err)
-	}
-	_, err = runtime.Advance("requestReview")
+	_, _, err = runtime.Start("review-flow")
 	if err == nil || !strings.Contains(err.Error(), "returning BOOL") {
-		t.Fatalf("advance error = %v, want BOOL registry error", err)
+		t.Fatalf("start error = %v, want BOOL registry error", err)
 	}
 }
 

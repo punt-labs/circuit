@@ -38,6 +38,10 @@ func (cmd command) run(args []string) error {
 		return nil
 	case "list":
 		return cmd.listMachines(args[1:])
+	case "load":
+		return cmd.load(args[1:])
+	case "scaffold":
+		return cmd.scaffold(args[1:])
 	case "start":
 		return cmd.start(args[1:])
 	case "status":
@@ -66,6 +70,47 @@ func (cmd command) listMachines(args []string) error {
 	}
 	for _, name := range names {
 		fmt.Fprintln(cmd.stdout, name)
+	}
+	return nil
+}
+
+func (cmd command) load(args []string) error {
+	machine, err := singleArg(args)
+	if err != nil {
+		return err
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	report, err := runtime.Load(machine)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.stdout, "loaded: %s\n", report.MachineName)
+	cmd.printCheckBindings(report.Checks)
+	return nil
+}
+
+func (cmd command) scaffold(args []string) error {
+	machine, err := singleArg(args)
+	if err != nil {
+		return err
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	report, err := runtime.Scaffold(machine)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.stdout, "scaffolded: %s\n", report.MachineName)
+	for _, variable := range report.GeneratedBindings {
+		fmt.Fprintf(cmd.stdout, "binding: %s\n", variable)
+	}
+	for _, check := range report.GeneratedRegistryIDs {
+		fmt.Fprintf(cmd.stdout, "stub: %s -> false\n", check)
 	}
 	return nil
 }
@@ -197,6 +242,16 @@ func (cmd command) printStatusReport(report circuitrun.StatusReport) {
 	cmd.printChecks(report.Checks)
 }
 
+func (cmd command) printCheckBindings(checks []circuitrun.CheckBindingReport) {
+	if len(checks) == 0 {
+		return
+	}
+	fmt.Fprintln(cmd.stdout, "checks:")
+	for _, check := range checks {
+		fmt.Fprintf(cmd.stdout, "  %s -> %s: %s\n", check.Variable, check.Use, check.Returns)
+	}
+}
+
 func (cmd command) printChecks(checks map[string]circuitrun.CheckRuntime) {
 	if len(checks) == 0 {
 		return
@@ -224,7 +279,9 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "usage: circuit <command> [args]")
 	fmt.Fprintln(cmd.stderr, "")
 	fmt.Fprintln(cmd.stderr, "commands:")
-	fmt.Fprintln(cmd.stderr, "  list                  list available B machines")
+	fmt.Fprintln(cmd.stderr, "  list                        list available B machines")
+	fmt.Fprintln(cmd.stderr, "  load <machine>              validate machine and check bindings")
+	fmt.Fprintln(cmd.stderr, "  scaffold <machine>          generate missing check bindings and false stubs")
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [session]            print circuit session status")
 	fmt.Fprintln(cmd.stderr, "  advance <event> [session]   apply Advance(event) to a circuit session")

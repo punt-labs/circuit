@@ -9,6 +9,152 @@ import (
 	"testing"
 )
 
+func TestScaffoldNoBooleanVariablesIsNoop(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	report, err := runtime.Scaffold("build-job")
+
+	if err != nil {
+		t.Fatalf("scaffold build-job: %v", err)
+	}
+	if len(report.GeneratedBindings) != 0 || len(report.GeneratedRegistryIDs) != 0 {
+		t.Fatalf("scaffold build-job = %#v, want no generated checks", report)
+	}
+	load, err := runtime.Load("build-job")
+	if err != nil {
+		t.Fatalf("load build-job: %v", err)
+	}
+	if len(load.Checks) != 0 {
+		t.Fatalf("load build-job checks = %v, want none", load.Checks)
+	}
+	if _, err := os.Stat(filepath.Join(root, "machines", "build-job.checks.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scaffold build-job check file err = %v, want not exist", err)
+	}
+}
+
+func TestLoadFailsWhenBooleanChecksMissing(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	if err := os.Remove(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	_, err = runtime.Load("review-flow")
+
+	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
+		t.Fatalf("load error = %v, want unbound BOOL variable", err)
+	}
+}
+
+func TestStartFailsWhenBooleanChecksMissing(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	if err := os.Remove(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	_, _, err = runtime.Start("review-flow")
+
+	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
+		t.Fatalf("start error = %v, want unbound BOOL variable", err)
+	}
+}
+
+func TestScaffoldGeneratesMissingBindingsAndFalseStubs(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	if err := os.Remove(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "machines", "check-registry.yaml"), []byte("checks:\n  existing:\n    kind: command\n    command: true\n    returns: BOOL\n"), 0o600); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	report, err := runtime.Scaffold("review-flow")
+
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+	if len(report.GeneratedBindings) != 1 || report.GeneratedBindings[0] != "makeCheckPassed" {
+		t.Fatalf("generated bindings = %v, want makeCheckPassed", report.GeneratedBindings)
+	}
+	bindings, err := os.ReadFile(filepath.Join(root, "machines", "review-flow.checks.yaml"))
+	if err != nil {
+		t.Fatalf("read bindings: %v", err)
+	}
+	if !strings.Contains(string(bindings), "makeCheckPassed:") || !strings.Contains(string(bindings), "use: makeCheckPassed") {
+		t.Fatalf("bindings content = %q", string(bindings))
+	}
+	registry, err := os.ReadFile(filepath.Join(root, "machines", "check-registry.yaml"))
+	if err != nil {
+		t.Fatalf("read registry: %v", err)
+	}
+	registryText := string(registry)
+	if !strings.Contains(registryText, "existing:") {
+		t.Fatalf("registry overwrote existing entry: %q", registryText)
+	}
+	if !strings.Contains(registryText, "makeCheckPassed:") || !strings.Contains(registryText, "command: \"false\"") {
+		t.Fatalf("registry missing false stub: %q", registryText)
+	}
+}
+
+func TestScaffoldStubsBlockUntilReplaced(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	if err := os.Remove(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("remove registry: %v", err)
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, err := runtime.Scaffold("review-flow"); err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+	if _, _, err := runtime.Start("review-flow"); err != nil {
+		t.Fatalf("start with scaffolded stubs: %v", err)
+	}
+	blocked, err := runtime.Advance("requestReview")
+	if err != nil {
+		t.Fatalf("advance with false stub: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("false stub allowed requestReview")
+	}
+
+	content := []byte("checks:\n  makeCheckPassed:\n    kind: command\n    command: true\n    returns: BOOL\n")
+	if err := os.WriteFile(filepath.Join(root, "machines", "check-registry.yaml"), content, 0o600); err != nil {
+		t.Fatalf("replace scaffolded registry: %v", err)
+	}
+	allowed, err := runtime.Advance("requestReview")
+	if err != nil {
+		t.Fatalf("advance with true replacement: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "codeReview" {
+		t.Fatalf("advance with real command = %#v, want codeReview", allowed)
+	}
+}
+
 func TestStartCreatesSessionWithMachineHexID(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
@@ -341,6 +487,35 @@ func TestStopWithNoSessionsClearsLegacySuspendedFile(t *testing.T) {
 	}
 	if _, err := os.Stat(runtime.suspendedPath()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy suspended file err = %v, want not exist", err)
+	}
+}
+
+func TestScaffoldFullPathWritesBesideMachine(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	if err := os.Remove(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("remove registry: %v", err)
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	machinePath := filepath.Join(root, "machines", "review-flow.mch")
+
+	if _, err := runtime.Scaffold(machinePath); err != nil {
+		t.Fatalf("scaffold full path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("full path scaffold bindings: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("full path scaffold registry: %v", err)
+	}
+	if _, err := runtime.Load(machinePath); err != nil {
+		t.Fatalf("load full path after scaffold: %v", err)
 	}
 }
 
