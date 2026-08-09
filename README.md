@@ -323,12 +323,15 @@ Done:
 
 ### Milestone 4: usefulness proof
 
-Next:
+In progress:
 
-- context injection: agent sees state and valid operations automatically
-- LLM tools: agent calls `circuit_advance`, not human `/circuit advance`
-- gating: agent cannot claim progress the machine has not validated
-- real workflow machine with facts and external check bindings
+- context injection: `before_agent_start` injects current circuit state and
+  valid operations into the agent's context on every turn
+- LLM tools: `circuit_status` and `circuit_advance` registered with pi so
+  the agent calls them directly instead of human slash commands
+- gating: `circuit_advance` tool enforces B-machine preconditions; blocked
+  transitions produce agent-visible feedback with failed conditions
+- slash commands remain for human control: `/circuit start`, `/circuit stop`
 
 ## Design principle
 

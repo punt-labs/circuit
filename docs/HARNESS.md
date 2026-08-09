@@ -53,13 +53,26 @@ For `circuit`, pi support starts minimal:
 
 Current extension commands:
 
+Slash commands (human control):
+
 - `/circuit list` lists available machines from `machines/*.mch`.
 - `/circuit start <machine>` starts an active circuit from a named machine.
-- `/circuit status` shows active machine, current state, and enabled/blocked
-  operations for the active circuit.
+- `/circuit status` shows active circuit status.
 - `/circuit advance <event>` requests `Advance(event)` against the active
-  circuit and updates the active state when allowed.
+  circuit.
 - `/circuit stop` clears the active circuit.
+
+LLM tools (agent calls these automatically):
+
+- `circuit_status` reports active circuit state and valid operations.
+- `circuit_advance` requests a transition; the B machine validates the
+  precondition and returns allowed or blocked.
+
+Context injection:
+
+- On every agent turn, `before_agent_start` injects the current circuit
+  state and valid operations into the agent's context so the agent sees
+  the machine without manual commands.
 
 ## opencode
 

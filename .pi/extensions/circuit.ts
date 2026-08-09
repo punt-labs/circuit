@@ -4,11 +4,88 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseCircuitCommand } from "./parse.js";
+import { formatContextInjection, parseAdvanceOutput, parseCircuitStatus } from "./context.js";
 
 const execFileAsync = promisify(execFile);
 const MACHINE_DIR = "machines";
 
 export default function circuitExtension(pi: ExtensionAPI) {
+	// -- Context injection: inject circuit state into every agent turn --
+
+	pi.on("before_agent_start", async () => {
+		const statusResult = await runCircuit(["status"]);
+		if (!statusResult.ok) return;
+		const status = parseCircuitStatus(statusResult.message);
+		if (!status) return;
+		const injection = formatContextInjection(status);
+		return {
+			message: {
+				customType: "circuit-state",
+				content: injection,
+				display: false,
+			},
+		};
+	});
+
+	// -- LLM tools: agent calls these instead of human slash commands --
+
+	pi.registerTool({
+		name: "circuit_status",
+		label: "Circuit Status",
+		description: "Report the active circuit machine state, enabled and blocked operations.",
+		promptSnippet: "Show current circuit machine state and available transitions",
+		promptGuidelines: [
+			"Use circuit_status to check the current workflow state before deciding next steps.",
+		],
+		parameters: {},
+		async execute() {
+			const result = await runCircuit(["status"]);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "circuit_advance",
+		label: "Circuit Advance",
+		description:
+			"Request a state transition. The B machine validates the precondition and returns allowed or blocked.",
+		promptSnippet: "Request a circuit state transition by event name",
+		promptGuidelines: [
+			"Use circuit_advance to request workflow progress. Do not claim a transition succeeded without calling circuit_advance first.",
+			"Call circuit_status before circuit_advance if you need to check which operations are enabled.",
+		],
+		parameters: {
+			type: "object",
+			properties: {
+				event: {
+					type: "string",
+					description: "The transition event name, e.g. 'start', 'requestReview', 'approve'",
+				},
+			},
+			required: ["event"],
+		},
+		async execute(_toolCallId, params) {
+			const event = (params as { event: string }).event;
+			if (!event) {
+				return {
+					content: [{ type: "text" as const, text: "missing event parameter" }],
+					details: { ok: false },
+				};
+			}
+			const result = await runCircuit(["advance", event]);
+			const parsed = parseAdvanceOutput(result.message);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok, allowed: parsed.allowed, from: parsed.from, to: parsed.to },
+			};
+		},
+	});
+
+	// -- Slash commands: human affordances for starting/stopping circuits --
+
 	pi.registerCommand("circuit", {
 		description: "Manage the active Circuit machine: /circuit <list|start|status|advance|stop>",
 		handler: async (args, ctx) => {
@@ -25,11 +102,7 @@ export default function circuitExtension(pi: ExtensionAPI) {
 						return;
 					}
 					const result = await runCircuit(["start", parsed.argument]);
-					if (!result.ok) {
-						ctx.ui.notify(result.message, "error");
-						return;
-					}
-					ctx.ui.notify(result.message, "info");
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
 					return;
 				}
 				case "status": {
