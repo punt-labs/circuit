@@ -1,29 +1,101 @@
 import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
+const MACHINE_DIR = "machines";
 
 export default function circuitExtension(pi: ExtensionAPI) {
-	pi.registerCommand("circuit-validate", {
-		description: "Validate a circuit playbook file",
+	pi.registerCommand("circuit", {
+		description: "Manage the active Circuit machine: /circuit <list|start|status|advance|stop>",
 		handler: async (args, ctx) => {
-			const file = args.trim() || "examples/pr-watch.yaml";
-			try {
-				const result = await execFileAsync("go", ["run", "./cmd/circuit", "validate", file], {
-					cwd: process.cwd(),
-				});
-				ctx.ui.notify(result.stdout.trim() || "circuit validation passed", "info");
-			} catch (error) {
-				if (isExecError(error)) {
-					const message = error.stderr.trim() || error.stdout.trim() || error.message;
-					ctx.ui.notify(message, "error");
+			const parsed = parseCircuitCommand(args);
+			switch (parsed.verb) {
+				case "list": {
+					const machines = await listMachines();
+					ctx.ui.notify(machines.length > 0 ? machines.join("\n") : "No machines found", "info");
 					return;
 				}
-				ctx.ui.notify(String(error), "error");
+				case "start": {
+					if (!parsed.argument) {
+						ctx.ui.notify("Usage: /circuit start <machine>", "warning");
+						return;
+					}
+					const result = await runCircuit(["start", parsed.argument]);
+					if (!result.ok) {
+						ctx.ui.notify(result.message, "error");
+						return;
+					}
+					ctx.ui.notify(result.message, "info");
+					return;
+				}
+				case "status": {
+					const result = await runCircuit(["status"]);
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
+					return;
+				}
+				case "advance": {
+					if (!parsed.argument) {
+						ctx.ui.notify("Usage: /circuit advance <event>", "warning");
+						return;
+					}
+					const result = await runCircuit(["advance", parsed.argument]);
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
+					return;
+				}
+				case "stop": {
+					const result = await runCircuit(["stop"]);
+					ctx.ui.notify(result.message, result.ok ? "info" : "error");
+					return;
+				}
 			}
 		},
 	});
+}
+
+interface CircuitCommand {
+	verb: "list" | "start" | "status" | "advance" | "stop";
+	argument?: string;
+}
+
+function parseCircuitCommand(args: string): CircuitCommand {
+	const fields = args.trim().split(/\s+/).filter(Boolean);
+	const verb = fields[0] ?? "status";
+	if (verb === "start" || verb === "advance") {
+		const argument = fields[1];
+		return argument ? { verb, argument } : { verb };
+	}
+	if (verb === "list" || verb === "status" || verb === "stop") return { verb };
+	return { verb: "status" };
+}
+
+async function listMachines(): Promise<string[]> {
+	const entries = await readdir(join(process.cwd(), MACHINE_DIR));
+	return entries
+		.filter((entry) => entry.endsWith(".mch"))
+		.map((entry) => basename(entry, ".mch"))
+		.sort();
+}
+
+interface CircuitResult {
+	ok: boolean;
+	message: string;
+}
+
+async function runCircuit(args: string[]): Promise<CircuitResult> {
+	try {
+		const result = await execFileAsync("go", ["run", "./cmd/circuit", ...args], {
+			cwd: process.cwd(),
+		});
+		return { ok: true, message: result.stdout.trim() || "circuit command completed" };
+	} catch (error) {
+		if (isExecError(error)) {
+			return { ok: false, message: error.stderr.trim() || error.stdout.trim() || error.message };
+		}
+		return { ok: false, message: String(error) };
+	}
 }
 
 function isExecError(error: unknown): error is Error & { stdout: string; stderr: string } {

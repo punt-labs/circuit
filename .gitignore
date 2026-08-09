@@ -2,6 +2,8 @@
 /circuit
 dist/
 coverage.out
+*.prob
+.pi/node_modules/
 
 # Scratch/temp directory
 .tmp/

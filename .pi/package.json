@@ -1,0 +1,19 @@
+{
+	"name": "@punt-labs/circuit-pi-extension",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "npm run typecheck && npm run lint && npm run format:check",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint .",
+		"format:check": "prettier --check ."
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"@types/node": "24.13.3",
+		"eslint": "10.8.1",
+		"prettier": "3.9.6",
+		"typescript": "5.9.3",
+		"typescript-eslint": "8.66.0"
+	}
+}
