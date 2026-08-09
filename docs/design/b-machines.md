@@ -463,9 +463,10 @@ suspended -> active -> suspended
 When `Advance` reaches a terminal state (no enabled operations), that session
 automatically transitions to `stopped`. Stopped sessions remain known so `stop`
 is idempotent for known sessions; unloaded or unknown sessions cannot be
-stopped. `Status` and `Advance` require at least one active session; `status`
-with no active session reports "no active session" as informational output, not
-an error. Implicit `advance` requires exactly one active session; implicit
+stopped. `Status` reports known active or stopped sessions; `Advance` requires
+at least one active session. `status` with no known session reports "no session"
+as informational output, not an error. Implicit `advance` requires exactly one
+active session; implicit
 `stop` requires exactly one active or stopped session; otherwise callers target
 a session ID such as `build-job-a3f8`.
 
@@ -502,9 +503,9 @@ without starting a session.
 `start` loads the machine, initializes a new active session, and records the
 machine plus current B state.
 
-`status` reports all active sessions or one selected session. State is the
-B-machine variable; status is the operational report. The first status report
-includes:
+`status` reports all known active or stopped sessions, or one selected session.
+State is the B-machine variable; status is the operational report. The first
+status report includes:
 
 - session ID;
 - machine;

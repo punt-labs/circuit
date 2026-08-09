@@ -122,6 +122,19 @@ func TestBMachineStartStatusAdvance(t *testing.T) {
 	}
 }
 
+func TestBMachineStatusWithoutSessionIsInformational(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"status"}); err != nil {
+		t.Fatalf("status without session returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "no session") {
+		t.Fatalf("status without session output mismatch: %q", stdout.String())
+	}
+}
+
 func TestBMachineAdvanceRequiresActiveCircuit(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
@@ -187,8 +200,8 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	if err := cmd.run([]string{"status"}); err != nil {
 		t.Fatalf("status after targeted stop returned error: %v", err)
 	}
-	if strings.Contains(stdout.String(), "session: "+second) {
-		t.Fatalf("stopped session still visible: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "session: "+second) || !strings.Contains(stdout.String(), "session-state: stopped") {
+		t.Fatalf("stopped session not visible as stopped: %q", stdout.String())
 	}
 }
 
@@ -334,7 +347,7 @@ func TestBMachineStop(t *testing.T) {
 	if err := cmd.run([]string{"status"}); err != nil {
 		t.Fatalf("status after stop returned error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "no active session") {
+	if !strings.Contains(stdout.String(), "session-state: stopped") {
 		t.Fatalf("status after stop output mismatch: %q", stdout.String())
 	}
 }

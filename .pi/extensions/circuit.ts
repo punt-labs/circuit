@@ -19,7 +19,9 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async () => {
 		const statusResult = await runCircuit(["status"]);
 		if (!statusResult.ok) return;
-		const statuses = parseCircuitStatuses(statusResult.message);
+		const statuses = parseCircuitStatuses(statusResult.message).filter(
+			(status) => status.sessionState === "active" || status.sessionState === undefined,
+		);
 		if (statuses.length === 0) return;
 		const injection = formatContextInjections(statuses);
 		return {

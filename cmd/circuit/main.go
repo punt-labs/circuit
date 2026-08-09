@@ -145,8 +145,12 @@ func (cmd command) status(args []string) error {
 	if err != nil {
 		return err
 	}
-	if !runtime.IsActive() {
-		fmt.Fprintln(cmd.stdout, "no active session")
+	reports, err := runtime.StatusAll()
+	if err != nil {
+		return err
+	}
+	if len(reports) == 0 {
+		fmt.Fprintln(cmd.stdout, "no session")
 		return nil
 	}
 	if len(args) == 1 {
@@ -156,10 +160,6 @@ func (cmd command) status(args []string) error {
 		}
 		cmd.printStatusReport(report)
 		return runtime.Suspend()
-	}
-	reports, err := runtime.StatusAll()
-	if err != nil {
-		return err
 	}
 	cmd.printStatusReports(reports)
 	return runtime.Suspend()
@@ -229,6 +229,7 @@ func (cmd command) printStatusReports(reports []circuitrun.StatusReport) {
 
 func (cmd command) printStatusReport(report circuitrun.StatusReport) {
 	fmt.Fprintf(cmd.stdout, "session: %s\n", report.SessionID)
+	fmt.Fprintf(cmd.stdout, "session-state: %s\n", report.SessionState)
 	fmt.Fprintf(cmd.stdout, "machine: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "current: %s\n", report.Current)
 	fmt.Fprintln(cmd.stdout, "enabled:")

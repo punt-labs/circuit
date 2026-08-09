@@ -43,12 +43,13 @@ type Run struct {
 }
 
 type StatusReport struct {
-	SessionID   string
-	MachineName string
-	Current     string
-	Enabled     []circuitb.CallStatus
-	Blocked     []circuitb.CallStatus
-	Checks      map[string]CheckRuntime
+	SessionID    string
+	SessionState SessionState
+	MachineName  string
+	Current      string
+	Enabled      []circuitb.CallStatus
+	Blocked      []circuitb.CallStatus
+	Checks       map[string]CheckRuntime
 }
 
 type AdvanceReport struct {
@@ -259,7 +260,7 @@ func (runtime *Runtime) Start(machineName string) (string, StatusReport, error) 
 }
 
 func (runtime *Runtime) Status() (StatusReport, error) {
-	run, err := runtime.singleActiveSession()
+	run, err := runtime.singleKnownSession()
 	if err != nil {
 		return StatusReport{}, err
 	}
@@ -267,7 +268,7 @@ func (runtime *Runtime) Status() (StatusReport, error) {
 }
 
 func (runtime *Runtime) StatusAll() ([]StatusReport, error) {
-	ids := runtime.activeSessionIDs()
+	ids := runtime.knownSessionIDs()
 	reports := make([]StatusReport, 0, len(ids))
 	for _, id := range ids {
 		report, err := runtime.StatusByID(id)
@@ -280,7 +281,7 @@ func (runtime *Runtime) StatusAll() ([]StatusReport, error) {
 }
 
 func (runtime *Runtime) StatusByID(id string) (StatusReport, error) {
-	run, err := runtime.activeSessionByID(id)
+	run, err := runtime.knownSessionByID(id)
 	if err != nil {
 		return StatusReport{}, err
 	}
@@ -407,13 +408,25 @@ func (runtime *Runtime) statusForRun(run *Run) (StatusReport, error) {
 
 func (runtime *Runtime) statusFromReport(run *Run, report circuitb.StateReport) StatusReport {
 	return StatusReport{
-		SessionID:   run.SessionID,
-		MachineName: run.MachineName,
-		Current:     report.Current,
-		Enabled:     report.Enabled,
-		Blocked:     report.Blocked,
-		Checks:      cloneChecks(run.Checks),
+		SessionID:    run.SessionID,
+		SessionState: run.Session,
+		MachineName:  run.MachineName,
+		Current:      report.Current,
+		Enabled:      report.Enabled,
+		Blocked:      report.Blocked,
+		Checks:       cloneChecks(run.Checks),
 	}
+}
+
+func (runtime *Runtime) singleKnownSession() (*Run, error) {
+	ids := runtime.knownSessionIDs()
+	if len(ids) == 0 {
+		return nil, errors.New("no session; run: circuit start <machine>")
+	}
+	if len(ids) > 1 {
+		return nil, fmt.Errorf("multiple sessions; specify one of: %s", strings.Join(ids, ", "))
+	}
+	return runtime.sessions[ids[0]], nil
 }
 
 func (runtime *Runtime) singleActiveSession() (*Run, error) {
@@ -427,12 +440,31 @@ func (runtime *Runtime) singleActiveSession() (*Run, error) {
 	return runtime.sessions[ids[0]], nil
 }
 
-func (runtime *Runtime) activeSessionByID(id string) (*Run, error) {
+func (runtime *Runtime) knownSessionByID(id string) (*Run, error) {
 	run, ok := runtime.sessions[id]
-	if !ok || run.Session != SessionActive {
+	if !ok {
+		return nil, fmt.Errorf("unknown session: %s", id)
+	}
+	return run, nil
+}
+
+func (runtime *Runtime) activeSessionByID(id string) (*Run, error) {
+	run, err := runtime.knownSessionByID(id)
+	if err != nil || run.Session != SessionActive {
 		return nil, fmt.Errorf("unknown active session: %s", id)
 	}
 	return run, nil
+}
+
+func (runtime *Runtime) knownSessionIDs() []string {
+	ids := make([]string, 0, len(runtime.sessions))
+	for id, run := range runtime.sessions {
+		if run.Session == SessionActive || run.Session == SessionStopped {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func (runtime *Runtime) activeSessionIDs() []string {

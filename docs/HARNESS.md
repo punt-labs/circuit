@@ -61,7 +61,8 @@ Slash commands (human control):
 - `/circuit scaffold <machine>` generates missing BOOL check bindings and
   failing registry stubs.
 - `/circuit start <machine>` starts a new circuit session from a named machine.
-- `/circuit status [session]` shows all active sessions or one selected session.
+- `/circuit status [session]` shows all known active or stopped sessions, or one
+  selected session.
 - `/circuit advance <event> [session]` requests `Advance(event)` against the
   only active session or a selected session.
 - `/circuit stop [session]` stops the only active session or a selected session.
@@ -73,7 +74,7 @@ LLM tools (full parity with slash commands):
 - `circuit_scaffold` generates missing BOOL check bindings and failing registry
   stubs.
 - `circuit_start` starts an active circuit from a named machine.
-- `circuit_status` reports active session state and valid operations; it accepts
+- `circuit_status` reports known session state and valid operations; it accepts
   an optional session ID.
 - `circuit_advance` requests a transition; the B machine validates the
   precondition and returns allowed or blocked. It accepts an optional session ID

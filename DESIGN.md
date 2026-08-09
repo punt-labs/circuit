@@ -106,8 +106,9 @@ a real usability problem observed during milestone 4 testing.
 
 **Constraints:**
 
-- `status` and `advance` require at least one active session.
-- `status` with no active session is informational, not an error.
+- `status` reports known active or stopped sessions.
+- `advance` requires at least one active session.
+- `status` with no known session is informational, not an error.
 - Implicit `advance` and `stop` are valid only when exactly one session
   is active; otherwise the caller must provide a session ID.
 - Stopped sessions remain known so `stop` is idempotent for known sessions.

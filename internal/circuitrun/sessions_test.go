@@ -9,6 +9,19 @@ import (
 	"testing"
 )
 
+func assertSessionStatus(t *testing.T, reports []StatusReport, id string, state SessionState) {
+	t.Helper()
+	for _, report := range reports {
+		if report.SessionID == id {
+			if report.SessionState != state {
+				t.Fatalf("session %s state = %s, want %s", id, report.SessionState, state)
+			}
+			return
+		}
+	}
+	t.Fatalf("session %s not found in reports %#v", id, reports)
+}
+
 func TestScaffoldNoBooleanVariablesIsNoop(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
@@ -307,12 +320,11 @@ func TestStopByIDLeavesOtherSessionActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusAll: %v", err)
 	}
-	if len(all) != 1 {
-		t.Fatalf("StatusAll after stop = %d, want 1", len(all))
+	if len(all) != 2 {
+		t.Fatalf("StatusAll after stop = %d, want 2", len(all))
 	}
-	if all[0].SessionID != id2 {
-		t.Fatalf("remaining session = %s, want %s", all[0].SessionID, id2)
-	}
+	assertSessionStatus(t, all, id1, SessionStopped)
+	assertSessionStatus(t, all, id2, SessionActive)
 }
 
 func TestAutoStopPerSession(t *testing.T) {
@@ -333,12 +345,11 @@ func TestAutoStopPerSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusAll: %v", err)
 	}
-	if len(all) != 1 {
-		t.Fatalf("StatusAll after auto-stop = %d, want 1", len(all))
+	if len(all) != 2 {
+		t.Fatalf("StatusAll after auto-stop = %d, want 2", len(all))
 	}
-	if all[0].SessionID != id2 {
-		t.Fatalf("remaining session = %s, want %s", all[0].SessionID, id2)
-	}
+	assertSessionStatus(t, all, id1, SessionStopped)
+	assertSessionStatus(t, all, id2, SessionActive)
 }
 
 func TestSuspendAndResumeMultipleSessions(t *testing.T) {

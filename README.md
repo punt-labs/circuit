@@ -183,8 +183,8 @@ has independent B state and check history. The runtime lifecycle is:
 Short-lived CLI commands implicitly resume and suspend:
 `suspended → active → suspended`. When a machine reaches a terminal state
 (no enabled operations), that session auto-stops without affecting other active
-sessions. `status` with no active session reports "no active session" instead of
-an error.
+sessions. `status` reports known active or stopped sessions; with no known
+session it reports "no session" instead of an error.
 
 Active sessions are stored as JSON files under `.tmp/sessions/`. The old
 `.tmp/circuit.suspended.json` path is read only for migration from the earlier

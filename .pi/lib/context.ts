@@ -1,5 +1,6 @@
 export interface CircuitStatus {
 	session?: string;
+	sessionState?: string;
 	machine: string;
 	current: string;
 	enabled: string[];
@@ -20,11 +21,13 @@ export function parseCircuitStatuses(output: string): CircuitStatus[] {
 
 function parseStatusBlock(lines: string[]): CircuitStatus | undefined {
 	const sessionLine = lines.find((line) => line.startsWith("session: "));
+	const sessionStateLine = lines.find((line) => line.startsWith("session-state: "));
 	const machineLine = lines.find((line) => line.startsWith("machine: "));
 	const currentLine = lines.find((line) => line.startsWith("current: "));
 	if (!machineLine || !currentLine) return undefined;
 
 	const session = sessionLine?.slice("session: ".length).trim();
+	const sessionState = sessionStateLine?.slice("session-state: ".length).trim();
 	const machine = machineLine.slice("machine: ".length).trim();
 	const current = currentLine.slice("current: ".length).trim();
 	const enabled: string[] = [];
@@ -55,7 +58,11 @@ function parseStatusBlock(lines: string[]): CircuitStatus | undefined {
 	}
 
 	const status = { machine, current, enabled, blocked, checks };
-	return session ? { session, ...status } : status;
+	return {
+		...(session ? { session } : {}),
+		...(sessionState ? { sessionState } : {}),
+		...status,
+	};
 }
 
 export function formatContextInjection(status: CircuitStatus): string {

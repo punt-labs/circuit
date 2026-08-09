@@ -159,7 +159,7 @@ func TestAutoStopOnTerminalState(t *testing.T) {
 	}
 }
 
-func TestStatusAndAdvanceFailAfterAutoStop(t *testing.T) {
+func TestStatusWorksAndAdvanceFailsAfterAutoStop(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
 	runtime, err := Resume(root)
@@ -176,9 +176,13 @@ func TestStatusAndAdvanceFailAfterAutoStop(t *testing.T) {
 		t.Fatalf("advance finish: %v", err)
 	}
 
-	// Session auto-stopped. Status and Advance should fail.
-	if _, err := runtime.Status(); err == nil {
-		t.Fatal("status after auto-stop returned nil error")
+	// Session auto-stopped. Status can inspect it, but Advance should fail.
+	status, err := runtime.Status()
+	if err != nil {
+		t.Fatalf("status after auto-stop: %v", err)
+	}
+	if status.SessionState != SessionStopped {
+		t.Fatalf("status session state = %s, want stopped", status.SessionState)
 	}
 	if _, err := runtime.Advance("start"); err == nil {
 		t.Fatal("advance after auto-stop returned nil error")
@@ -251,7 +255,7 @@ func TestRuntimeListsMachinesAndReportsSuspendedPath(t *testing.T) {
 	}
 }
 
-func TestRuntimeStopClearsSuspendedRuntime(t *testing.T) {
+func TestRuntimeStopPreservesStoppedSession(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
 	runtime, err := Resume(root)
@@ -271,8 +275,12 @@ func TestRuntimeStopClearsSuspendedRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume after stop: %v", err)
 	}
-	if _, err := resumed.Status(); err == nil {
-		t.Fatal("status after stop returned nil error")
+	status, err := resumed.Status()
+	if err != nil {
+		t.Fatalf("status after stop: %v", err)
+	}
+	if status.SessionState != SessionStopped {
+		t.Fatalf("status session state = %s, want stopped", status.SessionState)
 	}
 }
 

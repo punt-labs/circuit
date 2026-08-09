@@ -12,6 +12,7 @@ describe("parseCircuitStatus", () => {
 	it("parses full status output", () => {
 		const output = [
 			"session: review-flow-a3f8",
+			"session-state: active",
 			"machine: review-flow",
 			"current: coding",
 			"enabled:",
@@ -26,6 +27,7 @@ describe("parseCircuitStatus", () => {
 
 		expect(status).toEqual({
 			session: "review-flow-a3f8",
+			sessionState: "active",
 			machine: "review-flow",
 			current: "coding",
 			enabled: ["Advance(requestReview)"],
@@ -62,6 +64,7 @@ describe("parseCircuitStatus", () => {
 	it("parses multiple status blocks", () => {
 		const output = [
 			"session: build-job-a3f8",
+			"session-state: active",
 			"machine: build-job",
 			"current: idle",
 			"enabled:",
@@ -69,6 +72,7 @@ describe("parseCircuitStatus", () => {
 			"blocked:",
 			"",
 			"session: review-flow-b4c9",
+			"session-state: stopped",
 			"machine: review-flow",
 			"current: coding",
 			"enabled:",
@@ -79,6 +83,7 @@ describe("parseCircuitStatus", () => {
 		expect(parseCircuitStatuses(output)).toEqual([
 			{
 				session: "build-job-a3f8",
+				sessionState: "active",
 				machine: "build-job",
 				current: "idle",
 				enabled: ["Advance(start)"],
@@ -87,6 +92,7 @@ describe("parseCircuitStatus", () => {
 			},
 			{
 				session: "review-flow-b4c9",
+				sessionState: "stopped",
 				machine: "review-flow",
 				current: "coding",
 				enabled: [],
