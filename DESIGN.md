@@ -3,6 +3,10 @@
 Architectural decisions for `circuit`. Each ADR records the decision,
 the evidence that supports it, and the constraints it creates.
 
+Formal design validation now starts in `docs/spec/circuit-runtime.tex`, a Z
+specification of Circuit's totalized load/scaffold/start/advance/stop/context
+operations.
+
 ## ADR 1: B-Method abstract machines as the formal model
 
 **Decision:** Circuit workflow definitions are B abstract machines

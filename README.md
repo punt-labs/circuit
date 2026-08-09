@@ -13,7 +13,8 @@ Shipped workflow machines are authored as
 model-checked with ProB during development, and interpreted by Go at runtime
 without requiring ProB for normal use.
 
-Design note: [`docs/design/b-machines.md`](docs/design/b-machines.md).
+Design notes: [`docs/design/b-machines.md`](docs/design/b-machines.md) and
+[`docs/spec/circuit-runtime.tex`](docs/spec/circuit-runtime.tex).
 
 ## Why this exists
 

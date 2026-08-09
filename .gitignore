@@ -5,6 +5,7 @@ coverage.out
 coverage-*.out
 .pi/coverage/
 *.prob
+*.fuzz
 .pi/node_modules/
 
 # Scratch/temp directory

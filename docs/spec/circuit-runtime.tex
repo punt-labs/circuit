@@ -1,0 +1,703 @@
+%
+% circuit-runtime.tex
+%
+% A Z specification of Circuit's runtime admission and session lifecycle.
+% The model is intentionally small: it validates the design shape of load,
+% scaffold, start, advance, stop, and context injection using totalized
+% operation schemas.
+%
+% Type-check:
+%   fuzz -t docs/spec/circuit-runtime.tex
+%
+
+\documentclass[a4paper,10pt,fleqn]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{fuzz}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\begin{document}
+
+\title{Circuit Runtime: A Z Specification}
+\author{Punt Labs}
+\date{August 2026}
+\hypersetup{
+  pdftitle={Circuit Runtime: A Z Specification},
+  pdfauthor={Punt Labs},
+  pdfsubject={Z Specification},
+  pdfcreator={fuzz/probcli}
+}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Scope}
+% ============================================================
+
+This specification models Circuit's runtime admission and session lifecycle: a
+machine is loaded, its external BOOL facts are validated against check bindings
+and the check registry, sessions are started and advanced, and active sessions
+are exposed to harness context injection. It is a model of the runtime design,
+not of any one workflow machine. Individual workflow machines remain B machines
+under \texttt{machines/*.mch}; this document specifies the host runtime that
+admits and operates them.
+
+The model follows the totalized-operation style used for command interfaces:
+operations do not disappear when preconditions fail. Instead, each public
+operation returns a result drawn from a finite result type. Success branches
+change state; error or blocked branches preserve state with $\Xi Circuit$.
+This mirrors the CLI and tool surfaces, where every command returns either a
+successful report or an explicit diagnostic.
+
+\subsection{Non-goals}
+
+The following implementation details are intentionally abstracted away:
+
+\begin{itemize}
+  \item Parsing B syntax. A machine is either present in $machines$ or absent.
+  \item The internal state graph of each B machine. Advancement is represented
+    by an abstract terminal/non-terminal outcome.
+  \item Concrete session-id generation. A fresh session identifier is supplied
+    as an input and guarded by $s? \notin sessions$.
+  \item Shell command execution. Checks are represented by registry entries
+    whose result is either stub-false or implemented-true.
+  \item File paths and JSON/YAML serialization. The model tracks the facts those
+    files encode: bindings, registry entries, and sessions.
+\end{itemize}
+
+% ============================================================
+\section{Basic Types and Results}
+% ============================================================
+
+\begin{zed}
+  [MACH, SESSION, CHECK]
+\end{zed}
+
+\begin{zed}
+  ZBOOL ::= ztrue | zfalse
+\end{zed}
+
+\begin{zed}
+  CHECKSTATE ::= missing | stubFalse | implementedTrue | badType
+\end{zed}
+
+\begin{zed}
+  LOADRESULT ::= loadOK | loadUnknownMachine | loadMissingBinding |
+    loadMissingRegistry | loadBadReturnType
+\end{zed}
+
+\begin{zed}
+  SCAFFOLDRESULT ::= scaffoldOK | scaffoldNoop | scaffoldUnknownMachine
+\end{zed}
+
+\begin{zed}
+  STARTRESULT ::= startOK | startLoadError
+\end{zed}
+
+\begin{zed}
+  ADVANCERESULT ::= advanceOK | advanceBlocked | advanceNoActiveSession |
+    advanceAmbiguousSession | advanceUnknownSession
+\end{zed}
+
+\begin{zed}
+  STOPRESULT ::= stopOK | stopNoActiveSession | stopAmbiguousSession |
+    stopUnknownSession
+\end{zed}
+
+\begin{zed}
+  INJECTRESULT ::= injectOK | injectNone
+\end{zed}
+
+% ============================================================
+\section{State}
+% ============================================================
+
+The state schema contains structural invariants: domains line up, active and
+terminal sessions are sessions, and the injected context is exactly a set of
+sessions. Safety properties are then stated as named consequences of this state
+and the totalized operations.
+
+\begin{schema}{Circuit}
+  machines : \power MACH \\
+  boolFacts : MACH \pfun \power CHECK \\
+  bindings : MACH \pfun (CHECK \pfun CHECK) \\
+  registry : CHECK \pfun CHECKSTATE \\
+  sessions : \power SESSION \\
+  active : \power SESSION \\
+  terminal : \power SESSION \\
+  sessionMachine : SESSION \pfun MACH \\
+  injected : \power SESSION
+\where
+  \dom boolFacts \subseteq machines \\
+  \dom bindings \subseteq machines \\
+  active \subseteq sessions \\
+  terminal \subseteq sessions \\
+  active \cap terminal = \emptyset \\
+  \dom sessionMachine = sessions \\
+  \ran sessionMachine \subseteq machines \\
+  injected \subseteq sessions
+\end{schema}
+
+\begin{schema}{Init}
+  Circuit'
+\where
+  sessions' = \emptyset \\
+  active' = \emptyset \\
+  terminal' = \emptyset \\
+  sessionMachine' = \emptyset \\
+  injected' = \emptyset
+\end{schema}
+
+A machine is loadable when every BOOL fact has a binding, every binding points
+at a registry entry, and every referenced registry entry returns BOOL. In this
+bounded model, $stubFalse$ and $implementedTrue$ are the two valid BOOL-returning
+command cases; $badType$ represents a registry entry with the wrong return type.
+
+\begin{zed}
+  BoolRegistry == \{ stubFalse, implementedTrue \}
+\end{zed}
+
+\begin{schema}{Loadable}
+  Circuit \\
+  m? : MACH
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  m? \in \dom bindings \\
+  boolFacts~m? \subseteq \dom (bindings~m?) \\
+  \ran (bindings~m?) \subseteq \dom registry \\
+  \{ c : \ran (bindings~m?) @ registry~c \} \subseteq BoolRegistry
+\end{schema}
+
+% ============================================================
+\section{Load}
+% ============================================================
+
+\begin{schema}{LoadOK}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : LOADRESULT
+\where
+  Loadable \\
+  result! = loadOK
+\end{schema}
+
+\begin{schema}{LoadUnknownMachine}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : LOADRESULT
+\where
+  m? \notin machines \\
+  result! = loadUnknownMachine
+\end{schema}
+
+\begin{schema}{LoadMissingBinding}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : LOADRESULT
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  (m? \notin \dom bindings \lor \lnot (boolFacts~m? \subseteq \dom (bindings~m?))) \\
+  result! = loadMissingBinding
+\end{schema}
+
+\begin{schema}{LoadMissingRegistry}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : LOADRESULT
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  m? \in \dom bindings \\
+  boolFacts~m? \subseteq \dom (bindings~m?) \\
+  \lnot (\ran (bindings~m?) \subseteq \dom registry) \\
+  result! = loadMissingRegistry
+\end{schema}
+
+\begin{schema}{LoadBadReturnType}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : LOADRESULT
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  m? \in \dom bindings \\
+  boolFacts~m? \subseteq \dom (bindings~m?) \\
+  \ran (bindings~m?) \subseteq \dom registry \\
+  \lnot (\{ c : \ran (bindings~m?) @ registry~c \} \subseteq BoolRegistry) \\
+  result! = loadBadReturnType
+\end{schema}
+
+\begin{zed}
+  LoadMachine \defs LoadOK \lor LoadUnknownMachine \lor LoadMissingBinding
+    \lor LoadMissingRegistry \lor LoadBadReturnType
+\end{zed}
+
+% ============================================================
+\section{Scaffold}
+% ============================================================
+
+Scaffold is the operation that makes an incomplete BOOL-fact machine loadable by
+creating missing bindings and false stubs. It never overwrites existing registry
+entries.
+
+
+\begin{schema}{ScaffoldOKNewBindings}
+  \Delta Circuit \\
+  m? : MACH \\
+  result! : SCAFFOLDRESULT
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  boolFacts~m? \neq \emptyset \\
+  m? \notin \dom bindings \\
+  bindings' = bindings \cup
+    \{ m? \mapsto \{ f : boolFacts~m? @ f \mapsto f \} \} \\
+  registry' = registry \oplus
+    \{ f : boolFacts~m? | f \notin \dom registry @ f \mapsto stubFalse \} \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  injected' = injected \\
+  result! = scaffoldOK
+\end{schema}
+
+\begin{schema}{ScaffoldOKExistingBindings}
+  \Delta Circuit \\
+  m? : MACH \\
+  result! : SCAFFOLDRESULT
+\where
+  m? \in machines \\
+  m? \in \dom boolFacts \\
+  boolFacts~m? \neq \emptyset \\
+  m? \in \dom bindings \\
+  bindings' = bindings \oplus
+    \{ m? \mapsto ((bindings~m?) \oplus
+      \{ f : boolFacts~m? | f \notin \dom (bindings~m?) @ f \mapsto f \}) \} \\
+  registry' = registry \oplus
+    \{ f : boolFacts~m? | f \notin \dom registry @ f \mapsto stubFalse \} \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  injected' = injected \\
+  result! = scaffoldOK
+\end{schema}
+
+\begin{schema}{ScaffoldNoop}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : SCAFFOLDRESULT
+\where
+  m? \in machines \\
+  (m? \notin \dom boolFacts \lor boolFacts~m? = \emptyset) \\
+  result! = scaffoldNoop
+\end{schema}
+
+\begin{schema}{ScaffoldUnknownMachine}
+  \Xi Circuit \\
+  m? : MACH \\
+  result! : SCAFFOLDRESULT
+\where
+  m? \notin machines \\
+  result! = scaffoldUnknownMachine
+\end{schema}
+
+\begin{zed}
+  ScaffoldMachine \defs ScaffoldOKNewBindings \lor ScaffoldOKExistingBindings
+    \lor ScaffoldNoop \lor ScaffoldUnknownMachine
+\end{zed}
+
+% ============================================================
+\section{Start}
+% ============================================================
+
+Starting a machine is allowed only through the same loadability predicate as the
+standalone Load operation. Start therefore cannot create an active session for a
+machine with missing bindings, missing registry entries, or non-BOOL registry
+entries.
+
+\begin{schema}{StartOK}
+  \Delta Circuit \\
+  m? : MACH \\
+  s? : SESSION \\
+  result! : STARTRESULT
+\where
+  Loadable \\
+  s? \notin sessions \\
+  sessions' = sessions \cup \{ s? \} \\
+  active' = active \cup \{ s? \} \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \cup \{ s? \mapsto m? \} \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \\
+  result! = startOK
+\end{schema}
+
+\begin{schema}{StartLoadError}
+  \Xi Circuit \\
+  m? : MACH \\
+  s? : SESSION \\
+  result! : STARTRESULT
+\where
+  \lnot (m? \in machines \land m? \in \dom boolFacts \land m? \in \dom bindings
+    \land boolFacts~m? \subseteq \dom (bindings~m?)
+    \land \ran (bindings~m?) \subseteq \dom registry
+    \land \{ c : \ran (bindings~m?) @ registry~c \} \subseteq BoolRegistry) \\
+  result! = startLoadError
+\end{schema}
+
+\begin{zed}
+  StartMachine \defs StartOK \lor StartLoadError
+\end{zed}
+
+% ============================================================
+\section{Advance}
+% ============================================================
+
+Advance is totalized over the command surface. Implicit advance succeeds only
+when exactly one session is active. Targeted advance succeeds only for an active
+session. A check result of $stubFalse$ blocks the transition; an implemented true
+check may advance. Terminal advances remove the session from $active$ and add it
+to $terminal$.
+
+\begin{schema}{AdvanceImplicitOK}
+  \Delta Circuit \\
+  s! : SESSION \\
+  terminal? : ZBOOL \\
+  result! : ADVANCERESULT
+\where
+  \# active = 1 \\
+  s! \in active \\
+  terminal? = zfalse \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \\
+  result! = advanceOK
+\end{schema}
+
+\begin{schema}{AdvanceImplicitTerminalOK}
+  \Delta Circuit \\
+  s! : SESSION \\
+  terminal? : ZBOOL \\
+  result! : ADVANCERESULT
+\where
+  \# active = 1 \\
+  s! \in active \\
+  terminal? = ztrue \\
+  sessions' = sessions \\
+  active' = active \setminus \{ s! \} \\
+  terminal' = terminal \cup \{ s! \} \\
+  sessionMachine' = sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \setminus \{ s! \} \\
+  result! = advanceOK
+\end{schema}
+
+\begin{schema}{AdvanceNoActiveSession}
+  \Xi Circuit \\
+  result! : ADVANCERESULT
+\where
+  active = \emptyset \\
+  result! = advanceNoActiveSession
+\end{schema}
+
+\begin{schema}{AdvanceAmbiguousSession}
+  \Xi Circuit \\
+  result! : ADVANCERESULT
+\where
+  \# active > 1 \\
+  result! = advanceAmbiguousSession
+\end{schema}
+
+\begin{zed}
+  AdvanceImplicit \defs AdvanceImplicitOK \lor AdvanceImplicitTerminalOK
+    \lor AdvanceNoActiveSession \lor AdvanceAmbiguousSession
+\end{zed}
+
+\begin{schema}{AdvanceTargetedOK}
+  \Delta Circuit \\
+  s? : SESSION \\
+  terminal? : ZBOOL \\
+  result! : ADVANCERESULT
+\where
+  s? \in active \\
+  terminal? = zfalse \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \\
+  result! = advanceOK
+\end{schema}
+
+\begin{schema}{AdvanceTargetedTerminalOK}
+  \Delta Circuit \\
+  s? : SESSION \\
+  terminal? : ZBOOL \\
+  result! : ADVANCERESULT
+\where
+  s? \in active \\
+  terminal? = ztrue \\
+  sessions' = sessions \\
+  active' = active \setminus \{ s? \} \\
+  terminal' = terminal \cup \{ s? \} \\
+  sessionMachine' = sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \setminus \{ s? \} \\
+  result! = advanceOK
+\end{schema}
+
+\begin{schema}{AdvanceTargetedUnknown}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : ADVANCERESULT
+\where
+  s? \notin active \\
+  result! = advanceUnknownSession
+\end{schema}
+
+\begin{zed}
+  AdvanceTargeted \defs AdvanceTargetedOK \lor AdvanceTargetedTerminalOK
+    \lor AdvanceTargetedUnknown
+\end{zed}
+
+% ============================================================
+\section{Stop and Context Injection}
+% ============================================================
+
+\begin{schema}{StopImplicitOK}
+  \Delta Circuit \\
+  s! : SESSION \\
+  result! : STOPRESULT
+\where
+  \# active = 1 \\
+  s! \in active \\
+  sessions' = sessions \setminus \{ s! \} \\
+  active' = \emptyset \\
+  terminal' = terminal \setminus \{ s! \} \\
+  sessionMachine' = \{ s! \} \ndres sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \setminus \{ s! \} \\
+  result! = stopOK
+\end{schema}
+
+\begin{schema}{StopNoActiveSession}
+  \Xi Circuit \\
+  result! : STOPRESULT
+\where
+  active = \emptyset \\
+  result! = stopNoActiveSession
+\end{schema}
+
+\begin{schema}{StopAmbiguousSession}
+  \Xi Circuit \\
+  result! : STOPRESULT
+\where
+  \# active > 1 \\
+  result! = stopAmbiguousSession
+\end{schema}
+
+\begin{zed}
+  StopImplicit \defs StopImplicitOK \lor StopNoActiveSession \lor StopAmbiguousSession
+\end{zed}
+
+\begin{schema}{StopTargetedOK}
+  \Delta Circuit \\
+  s? : SESSION \\
+  result! : STOPRESULT
+\where
+  s? \in active \\
+  sessions' = sessions \setminus \{ s? \} \\
+  active' = active \setminus \{ s? \} \\
+  terminal' = terminal \setminus \{ s? \} \\
+  sessionMachine' = \{ s? \} \ndres sessionMachine \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  injected' = injected \setminus \{ s? \} \\
+  result! = stopOK
+\end{schema}
+
+\begin{schema}{StopTargetedUnknown}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : STOPRESULT
+\where
+  s? \notin active \\
+  result! = stopUnknownSession
+\end{schema}
+
+\begin{zed}
+  StopTargeted \defs StopTargetedOK \lor StopTargetedUnknown
+\end{zed}
+
+\begin{schema}{InjectActiveSessions}
+  \Delta Circuit \\
+  result! : INJECTRESULT
+\where
+  active \neq \emptyset \\
+  injected' = active \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  result! = injectOK
+\end{schema}
+
+\begin{schema}{InjectNothing}
+  \Delta Circuit \\
+  result! : INJECTRESULT
+\where
+  active = \emptyset \\
+  injected' = \emptyset \\
+  machines' = machines \\
+  boolFacts' = boolFacts \\
+  bindings' = bindings \\
+  registry' = registry \\
+  sessions' = sessions \\
+  active' = active \\
+  terminal' = terminal \\
+  sessionMachine' = sessionMachine \\
+  result! = injectNone
+\end{schema}
+
+\begin{zed}
+  InjectContext \defs InjectActiveSessions \lor InjectNothing
+\end{zed}
+
+% ============================================================
+\section{Safety Properties}
+% ============================================================
+
+The central safety invariant is stated separately for readability, but its
+conjuncts are consequences the operations are expected to preserve. Keeping it
+named lets us use it both as a proof target for the correct design and as a
+counter-example target for buggy variants.
+
+\begin{schema}{SafetyOK}
+  Circuit
+\where
+  active \cap terminal = \emptyset \\
+  injected \subseteq active \\
+  \forall s : active @ sessionMachine~s \in machines \\
+  \forall s : active @
+    (sessionMachine~s \in \dom boolFacts \land
+     sessionMachine~s \in \dom bindings \land
+     boolFacts~(sessionMachine~s) \subseteq \dom (bindings~(sessionMachine~s)) \land
+     \ran (bindings~(sessionMachine~s)) \subseteq \dom registry \land
+     \{ c : \ran (bindings~(sessionMachine~s)) @ registry~c \} \subseteq BoolRegistry)
+\end{schema}
+
+\subsection{Buggy variants to validate the model}
+
+A useful model must detect the faults the runtime design is meant to prevent.
+The following variants are not part of the correct operation set. They are the
+mutations we should run as separate tiny documents or guarded ProB goals:
+
+\begin{enumerate}
+  \item \textbf{StartWithoutLoadValidation}: creates an active session for a
+    machine even when \texttt{LoadMachine} would return an error. Expected:
+    ProB reaches a state violating \texttt{SafetyOK}.
+  \item \textbf{AdvanceImplicitChoosesOne}: with two active sessions, advances
+    one instead of returning \texttt{advanceAmbiguousSession}. Expected: a goal
+    state records an ambiguous implicit advance.
+  \item \textbf{AdvanceTerminalKeepsActive}: terminal advance leaves the session
+    in \texttt{active}. Expected: \texttt{active \cap terminal \neq \emptyset}
+    is reachable.
+  \item \textbf{StopTargetedClearsAll}: targeted stop removes every session.
+    Expected: a cross-session mutation latch becomes reachable.
+  \item \textbf{ScaffoldCreatesTrueStub}: scaffold inserts
+    \texttt{implementedTrue} instead of \texttt{stubFalse}. Expected: a
+    scaffolded, unimplemented check can advance.
+\end{enumerate}
+
+% ============================================================
+\section{Verification Plan}
+% ============================================================
+
+This first draft is intended to type-check with fuzz:
+
+\begin{verbatim}
+fuzz -t docs/spec/circuit-runtime.tex
+\end{verbatim}
+
+The first ProB run uses one machine, one session, and one check. That scope is
+small, but it is enough to exercise every public operation branch and the
+load/scaffold/start interplay around one BOOL fact:
+
+\begin{verbatim}
+probcli docs/spec/circuit-runtime.tex -model_check \\
+  -p DEFAULT_SETSIZE 1 -p MAX_INITIALISATIONS 200
+\end{verbatim}
+
+Observed result on 2026-08-09:
+
+\begin{itemize}
+  \item all operations covered;
+  \item 77 states analysed;
+  \item 778 transitions fired;
+  \item no counterexample found;
+  \item all open states visited.
+\end{itemize}
+
+A wider two-element carrier currently requires a higher initialization budget,
+because the initial machine/check configuration is intentionally unconstrained
+so ProB can explore missing-binding and missing-registry cases. Tightening that
+scope without losing the interesting cases is follow-up work.
+
+The next validation step is to create separate buggy variants and record the
+counterexample traces listed above.
+
+\subsection{Derived test obligations}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{Spec case} & \textbf{Implementation obligation} \\
+Load no BOOL facts & \texttt{build-job} loads without check files \\
+Load missing binding & \texttt{start review-flow} fails before session creation \\
+Scaffold missing facts & checks YAML and false registry stubs are generated \\
+False stub & advance is blocked \\
+Replace stub & advance is allowed \\
+Start valid machine & new active session is created \\
+Terminal advance & session auto-stops \\
+Two active sessions & implicit advance returns ambiguity \\
+Targeted advance & only selected session changes \\
+Context injection & all and only active sessions are injected \\
+\end{tabular}
+\end{center}
+
+\end{document}
