@@ -248,16 +248,24 @@ Pi support currently includes a project-local TypeScript extension:
 The extension shells out to the Go CLI and keeps transition logic in Go. Current
 commands:
 
+Slash commands (human control):
+
 - `/circuit list`
 - `/circuit start <machine>`
 - `/circuit status`
 - `/circuit advance <event>`
 - `/circuit stop`
 
-The pi-hosted spike is intentionally thin: pi presents circuit status and
-requests transitions, while the B-backed Go runtime decides whether progress is
-valid. The extension tracks one active circuit in the pi extension process after
-`/circuit start <machine>`.
+LLM tools (agent calls these directly):
+
+- `circuit_list`
+- `circuit_start`
+- `circuit_status`
+- `circuit_advance`
+- `circuit_stop`
+
+Full parity: anything the human can do, the agent can do. The B-backed
+Go runtime decides whether progress is valid.
 
 The other relationship — circuit as the outer runner driving `pi --mode rpc` —
 was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
