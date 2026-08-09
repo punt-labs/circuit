@@ -29,6 +29,8 @@ check-machines: ## Validate B machines with ProB
 	$(PROBCLI) machines/pr-watch.mch -model_check -nodead
 	$(PROBCLI) machines/review-flow.mch -init
 	$(PROBCLI) machines/review-flow.mch -model_check -nodead
+	$(PROBCLI) machines/retry-flow.mch -init
+	$(PROBCLI) machines/retry-flow.mch -model_check -nodead
 
 lint: lint-engine ## Lint Go engine
 

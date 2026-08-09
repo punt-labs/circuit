@@ -147,6 +147,35 @@ func TestReviewFlowBlocksWhenBoundCheckFails(t *testing.T) {
 	}
 }
 
+func TestRetryFlowBlocksThenAdvances(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	writeAlternatingRegistry(t, cmd.cwd)
+
+	if err := cmd.run([]string{"start", "retry-flow"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	stdout.Reset()
+
+	// First advance: blocked (invocation 1 = odd = fail)
+	if err := cmd.run([]string{"advance", "proceed"}); err != nil {
+		t.Fatalf("advance 1 returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "blocked: Advance(proceed)") {
+		t.Fatalf("advance 1 not blocked: %q", stdout.String())
+	}
+	stdout.Reset()
+
+	// Second advance: allowed (invocation 2 = even = pass)
+	if err := cmd.run([]string{"advance", "proceed"}); err != nil {
+		t.Fatalf("advance 2 returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: waiting -> done") {
+		t.Fatalf("advance 2 not allowed: %q", stdout.String())
+	}
+}
+
 func TestBMachineStop(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -271,10 +300,21 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "check-registry.yaml"} {
+	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
+}
+
+func writeAlternatingRegistry(t *testing.T, root string) {
+	t.Helper()
+	script := filepath.Join(root, "machines", "alternating-check.sh")
+	statePath := filepath.Join(root, ".tmp", "alternating-check.state")
+	content := []byte("checks:\n  alternatingCheck:\n    kind: command\n    command: sh " + script + " " + statePath + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write alternating registry: %v", err)
+	}
 }
 
 func writeRegistry(t *testing.T, root string, command string) {

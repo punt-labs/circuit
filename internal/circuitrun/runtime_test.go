@@ -96,8 +96,8 @@ func TestRuntimeListsMachinesAndReportsSuspendedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list machines: %v", err)
 	}
-	if len(machines) != 2 || machines[0] != "build-job" || machines[1] != "review-flow" {
-		t.Fatalf("machines = %v, want build-job/review-flow", machines)
+	if len(machines) != 3 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" {
+		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow", machines)
 	}
 	if runtime.SuspendedPath() != filepath.Join(root, ".tmp", "circuit.suspended.json") {
 		t.Fatalf("suspended path = %s", runtime.SuspendedPath())
@@ -217,6 +217,45 @@ func TestRuntimeBlocksFailedBoundCheck(t *testing.T) {
 	}
 }
 
+func TestRuntimeRetryAfterBlockedCheck(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeAlternatingRegistry(t, root)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, err := runtime.Start("retry-flow"); err != nil {
+		t.Fatalf("start retry-flow: %v", err)
+	}
+
+	// First advance: alternating check fails (invocation 1 = odd)
+	report1, err := runtime.Advance("proceed")
+	if err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	if report1.Allowed {
+		t.Fatal("advance 1 should be blocked")
+	}
+	check1 := report1.Checks["gateOpen"]
+	if check1.LastResult || check1.Invocations != 1 {
+		t.Fatalf("check 1 = %#v, want false/1", check1)
+	}
+
+	// Second advance: alternating check passes (invocation 2 = even)
+	report2, err := runtime.Advance("proceed")
+	if err != nil {
+		t.Fatalf("advance 2: %v", err)
+	}
+	if !report2.Allowed || report2.To != "done" {
+		t.Fatalf("advance 2 = %#v, want allowed to done", report2)
+	}
+	check2 := report2.Checks["gateOpen"]
+	if !check2.LastResult || check2.Invocations != 2 {
+		t.Fatalf("check 2 = %#v, want true/2", check2)
+	}
+}
+
 func testRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -224,10 +263,21 @@ func testRoot(t *testing.T) string {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "check-registry.yaml"} {
+	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyFixture(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return root
+}
+
+func writeAlternatingRegistry(t *testing.T, root string) {
+	t.Helper()
+	script := filepath.Join(root, "machines", "alternating-check.sh")
+	statePath := filepath.Join(root, ".tmp", "alternating-check.state")
+	content := []byte("checks:\n  alternatingCheck:\n    kind: command\n    command: sh " + script + " " + statePath + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write alternating registry: %v", err)
+	}
 }
 
 func writeRegistry(t *testing.T, root string, command string) {
