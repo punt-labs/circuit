@@ -40,23 +40,24 @@ valid.
 
 Implemented now:
 
-- Nix development shell
-- `make check` gate for engine, pi extension, and docs
-- project-local pi extension at `.pi/extensions/circuit.ts`
-- TypeScript typecheck/lint/format gate for the pi extension
-- B-machine spikes under `machines/build-job.mch`, `machines/pr-watch.mch`, and
-  `machines/review-flow.mch`
-- Circuit-B runtime package under `internal/circuitb/`
-- Go runtime commands for the B machine:
-  - `circuit list`
-  - `circuit start build-job`
-  - `circuit status`
-  - `circuit advance start`
-  - `circuit advance finish`
-- check binding files for runtime preconditions:
-  - `machines/review-flow.checks.yaml`
-  - `machines/check-registry.yaml`
+- Nix development shell with golangci-lint matching ethos conventions
+- `make check` gate for engine, RPC protocol, pi extension, and docs
+- project-local pi extension at `.pi/extensions/circuit.ts` with context
+  injection, `circuit_status` and `circuit_advance` LLM tools, and
+  `/circuit` slash commands for human control
+- B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
+- Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
+- suspend/resume runtime under `internal/circuitrun/`
+- RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
+  test
+- CLI commands: `list`, `start`, `status`, `advance`, `stop`
+- check bindings for runtime preconditions with invocation tracking
+- `retry-flow` machine proving block/retry loops work
 - ProB development gate: `make check-machines`
+- automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
+  smoke test
+- first live test: agent called `circuit_status` then `circuit_advance`
+  unprompted and progressed `build-job` from `idle` to `running`
 
 ## Direction: B machines
 
