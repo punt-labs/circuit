@@ -100,24 +100,7 @@ func (parser *parser) variableList() ([]rawIdentifier, error) {
 }
 
 func (parser *parser) predicateUntilClause() (rawPredicate, error) {
-	predicate, err := parser.disjunction()
-	if err != nil {
-		return nil, err
-	}
-	for !isClauseStart(parser.current().typeof) && !parser.at(tokenEOF) {
-		if !parser.consume(tokenAmpersand) {
-			break
-		}
-		right, err := parser.disjunction()
-		if err != nil {
-			return nil, err
-		}
-		span := predicate.predicateSpan()
-		span.EndLine = right.predicateSpan().EndLine
-		span.EndColumn = right.predicateSpan().EndColumn
-		predicate = rawBinaryPredicate{Operator: "&", Left: predicate, Right: right, Span: span}
-	}
-	return predicate, nil
+	return parser.disjunction()
 }
 
 func (parser *parser) substitutionUntilClause() (rawSubstitution, error) {

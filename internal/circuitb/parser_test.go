@@ -267,6 +267,55 @@ func TestParseBadAssignmentMissingValue(t *testing.T) {
 	}
 }
 
+func TestParseMultiPredicateInvariant(t *testing.T) {
+	t.Parallel()
+	raw := mustParse(t, `
+		MACHINE Multi
+		SETS STATE = {a, b}; TRANSITION = {go}
+		VARIABLES current, flag
+		INVARIANT
+			current : STATE &
+			flag : BOOL &
+			(current = a or current = b)
+		INITIALISATION current := a || flag := FALSE
+		OPERATIONS
+			Op(evt) = PRE evt : TRANSITION THEN current := b END
+		END
+	`)
+	if raw.Invariant == nil {
+		t.Fatal("invariant is nil")
+	}
+	if !raw.HasInvariant {
+		t.Fatal("HasInvariant is false")
+	}
+}
+
+func TestParseClausesInAnyOrder(t *testing.T) {
+	t.Parallel()
+	raw := mustParse(t, `
+		MACHINE Reordered
+		VARIABLES current
+		SETS STATE = {a}; TRANSITION = {go}
+		INITIALISATION current := a
+		INVARIANT current : STATE
+		OPERATIONS
+			Op(evt) = PRE evt : TRANSITION THEN current := a END
+		END
+	`)
+	if raw.Name != "Reordered" {
+		t.Fatalf("name = %q", raw.Name)
+	}
+	if len(raw.Sets) != 2 {
+		t.Fatalf("sets = %d", len(raw.Sets))
+	}
+	if len(raw.Variables) != 1 {
+		t.Fatalf("variables = %d", len(raw.Variables))
+	}
+	if !raw.HasInvariant || !raw.HasInitialisation || !raw.HasOperations {
+		t.Fatal("missing clause flags")
+	}
+}
+
 func TestParseEmptyInput(t *testing.T) {
 	t.Parallel()
 	_, err := parse(mustLex(t, ""))
