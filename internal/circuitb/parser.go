@@ -314,35 +314,7 @@ func (parser *parser) expression() (rawExpression, error) {
 }
 
 func (parser *parser) substitutionUntil(end tokenType) (rawSubstitution, error) {
-	if parser.consume(tokenIf) {
-		return parser.ifSubstitution()
-	}
-	if parser.consume(tokenAny) {
-		return parser.unsupportedSubstitution("ANY")
-	}
-	first, err := parser.assignment()
-	if err != nil {
-		return nil, err
-	}
-	assignments := []rawAssignment{first}
-	for parser.consume(tokenParallel) {
-		next, err := parser.assignment()
-		if err != nil {
-			return nil, err
-		}
-		assignments = append(assignments, next)
-	}
-	if !parser.at(end) {
-		return nil, Diagnostic{Span: parser.current().span, Message: fmt.Sprintf("expected %s after substitution", tokenName(end))}
-	}
-	if len(assignments) == 1 {
-		return assignments[0], nil
-	}
-	span := assignments[0].Span
-	last := assignments[len(assignments)-1].Span
-	span.EndLine = last.EndLine
-	span.EndColumn = last.EndColumn
-	return rawParallelAssignment{Assignments: assignments, Span: span}, nil
+	return parser.substitutionUntilAny([]tokenType{end})
 }
 
 func (parser *parser) ifSubstitution() (rawSubstitution, error) {
