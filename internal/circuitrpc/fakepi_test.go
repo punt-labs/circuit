@@ -46,11 +46,7 @@ func TestRunnerLoopAgainstFakePi(t *testing.T) {
 		}
 
 		prompt := FormatPrompt(status)
-		request := map[string]string{
-			"id":      "req",
-			"type":    "prompt",
-			"message": prompt,
-		}
+		request := PromptRequest{ID: "req", Type: "prompt", Message: prompt}
 		data, _ := json.Marshal(request)
 		_, err := fmt.Fprintf(writer, "%s\n", data)
 		if err != nil {
@@ -64,16 +60,14 @@ func TestRunnerLoopAgainstFakePi(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read event: %v", err)
 			}
-			var event map[string]interface{}
+			var event Event
 			if err := json.Unmarshal([]byte(line), &event); err != nil {
 				continue
 			}
-			if event["type"] == "message_end" {
-				if msg, ok := event["message"].(map[string]interface{}); ok {
-					lastText = ExtractTextFromMessage(msg)
-				}
+			if event.Type == "message_end" {
+				lastText = ExtractTextFromMessage(event.Message)
 			}
-			if event["type"] == "agent_settled" {
+			if event.Type == "agent_settled" {
 				break
 			}
 		}
@@ -123,14 +117,14 @@ func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[
 		if err != nil {
 			return
 		}
-		var request map[string]interface{}
+		var request PromptRequest
 		if err := json.Unmarshal([]byte(line), &request); err != nil {
 			continue
 		}
-		if request["type"] != "prompt" {
+		if request.Type != "prompt" {
 			continue
 		}
-		message, _ := request["message"].(string)
+		message := request.Message
 		response := ""
 		for keyword, reply := range responses {
 			if strings.Contains(message, "Current state: "+keyword) {
@@ -139,19 +133,17 @@ func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[
 			}
 		}
 
-		msgEnd := map[string]interface{}{
-			"type": "message_end",
-			"message": map[string]interface{}{
-				"role": "assistant",
-				"content": []interface{}{
-					map[string]interface{}{"type": "text", "text": response},
-				},
+		msgEnd := Event{
+			Type: "message_end",
+			Message: Message{
+				Role:    "assistant",
+				Content: []ContentBlock{{Type: "text", Text: response}},
 			},
 		}
 		data, _ := json.Marshal(msgEnd)
 		fmt.Fprintf(writer, "%s\n", data)
 
-		settled := map[string]string{"type": "agent_settled"}
+		settled := Event{Type: "agent_settled"}
 		data, _ = json.Marshal(settled)
 		fmt.Fprintf(writer, "%s\n", data)
 	}

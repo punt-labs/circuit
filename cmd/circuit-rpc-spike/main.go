@@ -119,10 +119,10 @@ func startPi() (*piRPC, error) {
 }
 
 func (p *piRPC) prompt(message string) (string, error) {
-	request := map[string]string{
-		"id":      fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		"type":    "prompt",
-		"message": message,
+	request := circuitrpc.PromptRequest{
+		ID:      fmt.Sprintf("req-%d", time.Now().UnixNano()),
+		Type:    "prompt",
+		Message: message,
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
@@ -140,20 +140,15 @@ func (p *piRPC) prompt(message string) (string, error) {
 		if err != nil {
 			return lastAssistantText, err
 		}
-		var event map[string]interface{}
+		var event circuitrpc.Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
-		eventType, _ := event["type"].(string)
 
-		if eventType == "message_end" {
-			if msg, ok := event["message"].(map[string]interface{}); ok {
-				if role, _ := msg["role"].(string); role == "assistant" {
-					lastAssistantText = circuitrpc.ExtractTextFromMessage(msg)
-				}
-			}
+		if event.Type == "message_end" && event.Message.Role == "assistant" {
+			lastAssistantText = circuitrpc.ExtractTextFromMessage(event.Message)
 		}
-		if eventType == "agent_settled" {
+		if event.Type == "agent_settled" {
 			return lastAssistantText, nil
 		}
 	}

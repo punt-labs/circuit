@@ -7,6 +7,27 @@ import (
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
 
+type PromptRequest struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+type Event struct {
+	Type    string  `json:"type"`
+	Message Message `json:"message"`
+}
+
+type Message struct {
+	Role    string         `json:"role"`
+	Content []ContentBlock `json:"content"`
+}
+
+type ContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
 func FormatPrompt(status circuitrun.StatusReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are operating inside a Circuit state machine.\n\n")
@@ -53,21 +74,11 @@ func IsTerminal(status circuitrun.StatusReport) bool {
 	return len(status.Enabled) == 0
 }
 
-func ExtractTextFromMessage(msg map[string]interface{}) string {
-	content, ok := msg["content"].([]interface{})
-	if !ok {
-		return ""
-	}
+func ExtractTextFromMessage(msg Message) string {
 	var parts []string
-	for _, item := range content {
-		block, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if blockType, _ := block["type"].(string); blockType == "text" {
-			if text, _ := block["text"].(string); text != "" {
-				parts = append(parts, text)
-			}
+	for _, block := range msg.Content {
+		if block.Type == "text" && block.Text != "" {
+			parts = append(parts, block.Text)
 		}
 	}
 	return strings.Join(parts, "\n")

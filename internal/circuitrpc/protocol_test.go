@@ -100,11 +100,11 @@ func TestIsTerminal(t *testing.T) {
 
 func TestExtractTextFromMessage(t *testing.T) {
 	t.Parallel()
-	msg := map[string]interface{}{
-		"content": []interface{}{
-			map[string]interface{}{"type": "text", "text": "hello"},
-			map[string]interface{}{"type": "text", "text": "world"},
-			map[string]interface{}{"type": "thinking", "thinking": "hmm"},
+	msg := Message{
+		Content: []ContentBlock{
+			{Type: "text", Text: "hello"},
+			{Type: "text", Text: "world"},
+			{Type: "thinking"},
 		},
 	}
 
@@ -117,10 +117,7 @@ func TestExtractTextFromMessage(t *testing.T) {
 
 func TestExtractTextFromMessageHandlesEmpty(t *testing.T) {
 	t.Parallel()
-	if text := ExtractTextFromMessage(map[string]interface{}{}); text != "" {
+	if text := ExtractTextFromMessage(Message{}); text != "" {
 		t.Fatalf("empty message text = %q", text)
-	}
-	if text := ExtractTextFromMessage(map[string]interface{}{"content": "not array"}); text != "" {
-		t.Fatalf("non-array content text = %q", text)
 	}
 }
