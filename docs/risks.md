@@ -94,6 +94,6 @@ session IDs.
 
 **Session lifecycle update:** sessions now have explicit states
 (unloaded, active, suspended, stopped). Terminal states auto-stop only
-the completed session, which clears its session file. Context injection
-fires when at least one session is active and includes all active
-sessions.
+the completed session, which remains known as stopped so `stop` is
+idempotent for known sessions. Context injection fires when at least one
+session is active and includes all active sessions.

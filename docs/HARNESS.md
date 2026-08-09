@@ -64,7 +64,7 @@ Slash commands (human control):
 - `/circuit status [session]` shows all active sessions or one selected session.
 - `/circuit advance <event> [session]` requests `Advance(event)` against the
   only active session or a selected session.
-- `/circuit stop [session]` clears the only active session or a selected session.
+- `/circuit stop [session]` stops the only active session or a selected session.
 
 LLM tools (full parity with slash commands):
 
@@ -78,8 +78,8 @@ LLM tools (full parity with slash commands):
 - `circuit_advance` requests a transition; the B machine validates the
   precondition and returns allowed or blocked. It accepts an optional session ID
   when multiple sessions are active.
-- `circuit_stop` clears an active circuit session; it accepts an optional
-  session ID.
+- `circuit_stop` stops an active circuit session; it accepts an optional
+  session ID. Stopping a known stopped session is idempotent.
 
 Context injection:
 

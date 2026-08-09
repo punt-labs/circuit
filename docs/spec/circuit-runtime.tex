@@ -100,8 +100,7 @@ The following implementation details are intentionally abstracted away:
 \end{zed}
 
 \begin{zed}
-  STOPRESULT ::= stopOK | stopNoActiveSession | stopAmbiguousSession |
-    stopUnknownSession
+  STOPRESULT ::= stopOK | stopNoSession | stopAmbiguousSession | stopUnknownSession
 \end{zed}
 
 \begin{zed}
@@ -507,6 +506,11 @@ to $terminal$.
 \section{Stop and Context Injection}
 % ============================================================
 
+Stop distinguishes stopped from unloaded. Stopping an active session moves it to
+$terminal$, the model's stopped-session set. Stopping a known stopped session is
+an idempotent success. Stopping when no active or stopped session exists returns
+$stopNoSession$.
+
 \begin{schema}{StopImplicitOK}
   \Delta Circuit \\
   s! : SESSION \\
@@ -526,12 +530,24 @@ to $terminal$.
   result! = stopOK
 \end{schema}
 
-\begin{schema}{StopNoActiveSession}
+\begin{schema}{StopStoppedSession}
+  \Xi Circuit \\
+  s! : SESSION \\
+  result! : STOPRESULT
+\where
+  active = \emptyset \\
+  \# terminal = 1 \\
+  s! \in terminal \\
+  result! = stopOK
+\end{schema}
+
+\begin{schema}{StopNoSession}
   \Xi Circuit \\
   result! : STOPRESULT
 \where
   active = \emptyset \\
-  result! = stopNoActiveSession
+  terminal = \emptyset \\
+  result! = stopNoSession
 \end{schema}
 
 \begin{schema}{StopAmbiguousSession}
@@ -543,7 +559,8 @@ to $terminal$.
 \end{schema}
 
 \begin{zed}
-  StopImplicit \defs StopImplicitOK \lor StopNoActiveSession \lor StopAmbiguousSession
+  StopImplicit \defs StopImplicitOK \lor StopStoppedSession \lor StopNoSession
+    \lor StopAmbiguousSession
 \end{zed}
 
 \begin{schema}{StopTargetedOK}
@@ -564,17 +581,28 @@ to $terminal$.
   result! = stopOK
 \end{schema}
 
+\begin{schema}{StopTargetedStoppedOK}
+  \Xi Circuit \\
+  s? : SESSION \\
+  result! : STOPRESULT
+\where
+  s? \in terminal \\
+  result! = stopOK
+\end{schema}
+
 \begin{schema}{StopTargetedUnknown}
   \Xi Circuit \\
   s? : SESSION \\
   result! : STOPRESULT
 \where
   s? \notin active \\
+  s? \notin terminal \\
   result! = stopUnknownSession
 \end{schema}
 
 \begin{zed}
-  StopTargeted \defs StopTargetedOK \lor StopTargetedUnknown
+  StopTargeted \defs StopTargetedOK \lor StopTargetedStoppedOK
+    \lor StopTargetedUnknown
 \end{zed}
 
 \begin{schema}{InjectActiveSessions}
@@ -697,7 +725,7 @@ Observed result on 2026-08-09:
 \begin{itemize}
   \item all operations covered;
   \item 133 states analysed;
-  \item 2221 transitions fired;
+  \item 2189 transitions fired;
   \item no counterexample found;
   \item all open states visited.
 \end{itemize}

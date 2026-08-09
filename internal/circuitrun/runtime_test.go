@@ -97,15 +97,18 @@ func TestSessionLifecycleStates(t *testing.T) {
 		t.Fatalf("resumed session state = %s, want active", resumed.SessionState())
 	}
 
-	// stop: active -> unloaded
+	// stop: active -> stopped
 	if err := resumed.Stop(); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 	if resumed.IsActive() {
 		t.Fatal("stopped runtime should not be active")
 	}
-	if resumed.SessionState() != SessionUnloaded {
-		t.Fatalf("stopped session state = %s, want unloaded", resumed.SessionState())
+	if resumed.SessionState() != SessionStopped {
+		t.Fatalf("stopped session state = %s, want stopped", resumed.SessionState())
+	}
+	if err := resumed.Stop(); err != nil {
+		t.Fatalf("idempotent stop: %v", err)
 	}
 }
 

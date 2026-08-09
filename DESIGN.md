@@ -110,7 +110,8 @@ a real usability problem observed during milestone 4 testing.
 - `status` with no active session is informational, not an error.
 - Implicit `advance` and `stop` are valid only when exactly one session
   is active; otherwise the caller must provide a session ID.
-- Suspending a stopped session clears its session file.
+- Stopped sessions remain known so `stop` is idempotent for known sessions.
+- Unloaded/unknown sessions cannot be stopped.
 - Context injection fires only when at least one session is active.
 
 ## ADR 6: Multiple concurrent sessions

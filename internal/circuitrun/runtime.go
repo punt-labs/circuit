@@ -124,8 +124,10 @@ func Resume(root string) (*Runtime, error) {
 	if err := runtime.loadSessions(); err != nil {
 		return nil, err
 	}
-	if len(runtime.sessions) > 0 {
+	if len(runtime.activeSessionIDs()) > 0 {
 		runtime.lastState = SessionActive
+	} else if len(runtime.stoppedSessionIDs()) > 0 {
+		runtime.lastState = SessionStopped
 	}
 	return runtime, nil
 }
@@ -141,21 +143,11 @@ func (runtime *Runtime) Suspend() error {
 			}
 		}
 	}
-	for id, run := range runtime.sessions {
-		if run.Session == SessionStopped {
-			if err := runtime.StopByID(id); err != nil {
-				return err
-			}
+	for _, run := range runtime.sessions {
+		if run.Session != SessionActive && run.Session != SessionStopped {
 			continue
 		}
-		if run.Session != SessionActive {
-			continue
-		}
-		content, err := json.MarshalIndent(run, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(runtime.sessionPath(id), append(content, '\n'), 0o600); err != nil {
+		if err := runtime.writeSession(run); err != nil {
 			return err
 		}
 	}
@@ -312,29 +304,38 @@ func (runtime *Runtime) AdvanceByID(id string, event string) (AdvanceReport, err
 }
 
 func (runtime *Runtime) Stop() error {
-	ids := runtime.activeSessionIDs()
-	if len(ids) == 0 {
-		runtime.lastState = SessionUnloaded
-		return runtime.removeLegacySuspendedRun()
+	activeIDs := runtime.activeSessionIDs()
+	if len(activeIDs) > 1 {
+		return fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(activeIDs, ", "))
 	}
-	if len(ids) > 1 {
-		return fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(ids, ", "))
+	if len(activeIDs) == 1 {
+		return runtime.StopByID(activeIDs[0])
 	}
-	return runtime.StopByID(ids[0])
+	stoppedIDs := runtime.stoppedSessionIDs()
+	if len(stoppedIDs) > 1 {
+		return fmt.Errorf("multiple stopped sessions; specify one of: %s", strings.Join(stoppedIDs, ", "))
+	}
+	if len(stoppedIDs) == 1 {
+		return nil
+	}
+	return errors.New("no session to stop; run: circuit start <machine>")
 }
 
 func (runtime *Runtime) StopByID(id string) error {
-	if _, ok := runtime.sessions[id]; !ok {
-		return fmt.Errorf("unknown active session: %s", id)
+	run, ok := runtime.sessions[id]
+	if !ok {
+		return fmt.Errorf("unknown session: %s", id)
 	}
-	delete(runtime.sessions, id)
+	if run.Session != SessionStopped {
+		run.Session = SessionStopped
+	}
 	if runtime.currentID == id {
 		runtime.currentID = ""
 	}
 	if len(runtime.activeSessionIDs()) == 0 {
-		runtime.lastState = SessionUnloaded
+		runtime.lastState = SessionStopped
 	}
-	if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := runtime.writeSession(run); err != nil {
 		return err
 	}
 	return runtime.removeLegacySuspendedRun()
@@ -387,7 +388,6 @@ func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error
 		if runtime.isTerminal(run) {
 			run.Session = SessionStopped
 			runtime.lastState = SessionStopped
-			delete(runtime.sessions, run.SessionID)
 		}
 	}
 	return report, nil
@@ -436,9 +436,17 @@ func (runtime *Runtime) activeSessionByID(id string) (*Run, error) {
 }
 
 func (runtime *Runtime) activeSessionIDs() []string {
+	return runtime.sessionIDsByState(SessionActive)
+}
+
+func (runtime *Runtime) stoppedSessionIDs() []string {
+	return runtime.sessionIDsByState(SessionStopped)
+}
+
+func (runtime *Runtime) sessionIDsByState(state SessionState) []string {
 	ids := make([]string, 0, len(runtime.sessions))
 	for id, run := range runtime.sessions {
-		if run.Session == SessionActive {
+		if run.Session == state {
 			ids = append(ids, id)
 		}
 	}
@@ -630,7 +638,7 @@ func (runtime *Runtime) loadSessions() error {
 		if err := json.Unmarshal(content, &run); err != nil {
 			return err
 		}
-		if run.Session != SessionActive {
+		if run.Session != SessionActive && run.Session != SessionStopped {
 			continue
 		}
 		if run.SessionID == "" {
@@ -708,6 +716,17 @@ func (runtime *Runtime) checkBindingsPath(machine string) string {
 
 func (runtime *Runtime) checkRegistryPath(machine string) string {
 	return filepath.Join(filepath.Dir(runtime.resolveMachineFile(machine)), "check-registry.yaml")
+}
+
+func (runtime *Runtime) writeSession(run *Run) error {
+	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
+		return err
+	}
+	content, err := json.MarshalIndent(run, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(runtime.sessionPath(run.SessionID), append(content, '\n'), 0o600)
 }
 
 func (runtime *Runtime) sessionPath(id string) string {

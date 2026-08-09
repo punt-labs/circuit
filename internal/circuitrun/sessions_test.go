@@ -468,25 +468,18 @@ func TestSuspendRemovesStaleSessionFiles(t *testing.T) {
 	}
 }
 
-func TestStopWithNoSessionsClearsLegacySuspendedFile(t *testing.T) {
+func TestStopWithNoSessionsFails(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
 	runtime, err := Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(runtime.suspendedPath()), 0o700); err != nil {
-		t.Fatalf("create legacy dir: %v", err)
-	}
-	if err := os.WriteFile(runtime.suspendedPath(), []byte("{}"), 0o600); err != nil {
-		t.Fatalf("write legacy suspended file: %v", err)
-	}
 
-	if err := runtime.Stop(); err != nil {
-		t.Fatalf("stop: %v", err)
-	}
-	if _, err := os.Stat(runtime.suspendedPath()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("legacy suspended file err = %v, want not exist", err)
+	err = runtime.Stop()
+
+	if err == nil || !strings.Contains(err.Error(), "no session to stop") {
+		t.Fatalf("stop with no sessions error = %v, want no session", err)
 	}
 }
 

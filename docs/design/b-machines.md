@@ -461,11 +461,13 @@ suspended -> active -> suspended
 ```
 
 When `Advance` reaches a terminal state (no enabled operations), that session
-automatically transitions to `stopped`. Suspending a stopped session clears its
-session file. `Status` and `Advance` require at least one active session;
-`status` with no active session reports "no active session" as informational
-output, not an error. Implicit `advance` and `stop` require exactly one active
-session; otherwise callers target a session ID such as `build-job-a3f8`.
+automatically transitions to `stopped`. Stopped sessions remain known so `stop`
+is idempotent for known sessions; unloaded or unknown sessions cannot be
+stopped. `Status` and `Advance` require at least one active session; `status`
+with no active session reports "no active session" as informational output, not
+an error. Implicit `advance` requires exactly one active session; implicit
+`stop` requires exactly one active or stopped session; otherwise callers target
+a session ID such as `build-job-a3f8`.
 
 Context injection in pi fires only when at least one session is active and
 includes every active session.
@@ -525,7 +527,9 @@ Circuit does not guess. The caller must choose. If the requested operation is
 blocked, the command reports failed preconditions and leaves the active state
 unchanged.
 
-`stop [session]` clears the only active session or the selected session.
+`stop [session]` stops the only active session or the selected session. Stopping
+a known stopped session is an idempotent success; stopping an unloaded or unknown
+session is not.
 
 ## Harness relationships
 

@@ -319,6 +319,7 @@ func TestBMachineStop(t *testing.T) {
 	if err := cmd.run([]string{"start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
+	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
 	if err := cmd.run([]string{"stop"}); err != nil {
 		t.Fatalf("stop returned error: %v", err)
@@ -326,11 +327,26 @@ func TestBMachineStop(t *testing.T) {
 	if !strings.Contains(stdout.String(), "stopped") {
 		t.Fatalf("stop output mismatch: %q", stdout.String())
 	}
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+		t.Fatalf("idempotent stop returned error: %v", err)
+	}
 	if err := cmd.run([]string{"status"}); err != nil {
 		t.Fatalf("status after stop returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "no active session") {
 		t.Fatalf("status after stop output mismatch: %q", stdout.String())
+	}
+}
+
+func TestBMachineStopWithoutSessionFails(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"stop"})
+
+	if err == nil || !strings.Contains(err.Error(), "no session to stop") {
+		t.Fatalf("stop without session error = %v, want no session", err)
 	}
 }
 
