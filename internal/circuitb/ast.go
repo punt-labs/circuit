@@ -1,13 +1,16 @@
 package circuitb
 
 type rawMachine struct {
-	Name           string
-	Sets           []rawSet
-	Variables      []rawIdentifier
-	Invariant      rawPredicate
-	Initialisation rawSubstitution
-	Operations     []rawOperation
-	Span           Span
+	Name              string
+	Sets              []rawSet
+	Variables         []rawIdentifier
+	HasInvariant      bool
+	Invariant         rawPredicate
+	HasInitialisation bool
+	Initialisation    rawSubstitution
+	HasOperations     bool
+	Operations        []rawOperation
+	Span              Span
 }
 
 type rawSet struct {

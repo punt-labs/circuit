@@ -32,44 +32,45 @@ func (parser *parser) machine() (rawMachine, error) {
 		return rawMachine{}, err
 	}
 	machine := rawMachine{Name: name.value, Span: start.span}
-	if parser.match(tokenSets) {
-		sets, err := parser.sets()
-		if err != nil {
-			return rawMachine{}, err
+	for !parser.at(tokenEnd) && !parser.at(tokenEOF) {
+		switch {
+		case parser.match(tokenSets):
+			sets, err := parser.sets()
+			if err != nil {
+				return rawMachine{}, err
+			}
+			machine.Sets = sets
+		case parser.match(tokenVariables):
+			variables, err := parser.variableList()
+			if err != nil {
+				return rawMachine{}, err
+			}
+			machine.Variables = variables
+		case parser.match(tokenInvariant):
+			invariant, err := parser.predicateUntilClause()
+			if err != nil {
+				return rawMachine{}, err
+			}
+			machine.HasInvariant = true
+			machine.Invariant = invariant
+		case parser.match(tokenInitialisation):
+			initialisation, err := parser.substitutionUntilClause()
+			if err != nil {
+				return rawMachine{}, err
+			}
+			machine.HasInitialisation = true
+			machine.Initialisation = initialisation
+		case parser.match(tokenOperations):
+			operations, err := parser.operations()
+			if err != nil {
+				return rawMachine{}, err
+			}
+			machine.HasOperations = true
+			machine.Operations = operations
+		default:
+			return rawMachine{}, Diagnostic{Span: parser.current().span, Message: fmt.Sprintf("unexpected %s in machine body", parser.current().value)}
 		}
-		machine.Sets = sets
 	}
-	if parser.match(tokenVariables) {
-		variables, err := parser.identifiersUntil(tokenInvariant, "expected variable name")
-		if err != nil {
-			return rawMachine{}, err
-		}
-		machine.Variables = variables
-	}
-	if _, err := parser.expect(tokenInvariant, "expected INVARIANT"); err != nil {
-		return rawMachine{}, err
-	}
-	invariant, err := parser.predicateUntil(tokenInitialisation)
-	if err != nil {
-		return rawMachine{}, err
-	}
-	machine.Invariant = invariant
-	if _, err := parser.expect(tokenInitialisation, "expected INITIALISATION"); err != nil {
-		return rawMachine{}, err
-	}
-	initialisation, err := parser.substitutionUntil(tokenOperations)
-	if err != nil {
-		return rawMachine{}, err
-	}
-	machine.Initialisation = initialisation
-	if _, err := parser.expect(tokenOperations, "expected OPERATIONS"); err != nil {
-		return rawMachine{}, err
-	}
-	operations, err := parser.operations()
-	if err != nil {
-		return rawMachine{}, err
-	}
-	machine.Operations = operations
 	end, err := parser.expect(tokenEnd, "expected END")
 	if err != nil {
 		return rawMachine{}, err
@@ -79,9 +80,78 @@ func (parser *parser) machine() (rawMachine, error) {
 	return machine, nil
 }
 
+func isClauseStart(typeof tokenType) bool {
+	return typeof == tokenSets || typeof == tokenVariables ||
+		typeof == tokenInvariant || typeof == tokenInitialisation ||
+		typeof == tokenOperations || typeof == tokenEnd
+}
+
+func (parser *parser) variableList() ([]rawIdentifier, error) {
+	identifiers := []rawIdentifier{}
+	for !isClauseStart(parser.current().typeof) && !parser.at(tokenEOF) {
+		identifier, err := parser.expect(tokenIdentifier, "expected variable name")
+		if err != nil {
+			return nil, err
+		}
+		identifiers = append(identifiers, rawIdentifier{Name: identifier.value, Span: identifier.span})
+		parser.consume(tokenComma)
+	}
+	return identifiers, nil
+}
+
+func (parser *parser) predicateUntilClause() (rawPredicate, error) {
+	predicate, err := parser.disjunction()
+	if err != nil {
+		return nil, err
+	}
+	for !isClauseStart(parser.current().typeof) && !parser.at(tokenEOF) {
+		if !parser.consume(tokenAmpersand) {
+			break
+		}
+		right, err := parser.disjunction()
+		if err != nil {
+			return nil, err
+		}
+		span := predicate.predicateSpan()
+		span.EndLine = right.predicateSpan().EndLine
+		span.EndColumn = right.predicateSpan().EndColumn
+		predicate = rawBinaryPredicate{Operator: "&", Left: predicate, Right: right, Span: span}
+	}
+	return predicate, nil
+}
+
+func (parser *parser) substitutionUntilClause() (rawSubstitution, error) {
+	if parser.consume(tokenIf) {
+		return parser.ifSubstitution()
+	}
+	if parser.consume(tokenAny) {
+		return parser.unsupportedSubstitution("ANY")
+	}
+	first, err := parser.assignment()
+	if err != nil {
+		return nil, err
+	}
+	assignments := []rawAssignment{first}
+	for parser.consume(tokenParallel) {
+		next, err := parser.assignment()
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, next)
+	}
+	if len(assignments) == 1 {
+		return assignments[0], nil
+	}
+	span := assignments[0].Span
+	last := assignments[len(assignments)-1].Span
+	span.EndLine = last.EndLine
+	span.EndColumn = last.EndColumn
+	return rawParallelAssignment{Assignments: assignments, Span: span}, nil
+}
+
 func (parser *parser) sets() ([]rawSet, error) {
 	sets := []rawSet{}
-	for !parser.at(tokenVariables) && !parser.at(tokenEOF) {
+	for !isClauseStart(parser.current().typeof) && !parser.at(tokenEOF) {
 		name, err := parser.expect(tokenIdentifier, "expected set name")
 		if err != nil {
 			return nil, err
@@ -433,19 +503,6 @@ func (parser *parser) assignment() (rawAssignment, error) {
 	span.EndLine = value.expressionSpan().EndLine
 	span.EndColumn = value.expressionSpan().EndColumn
 	return rawAssignment{Name: name.value, Value: value, Span: span}, nil
-}
-
-func (parser *parser) identifiersUntil(end tokenType, message string) ([]rawIdentifier, error) {
-	identifiers := []rawIdentifier{}
-	for !parser.at(end) && !parser.at(tokenEOF) {
-		identifier, err := parser.expect(tokenIdentifier, message)
-		if err != nil {
-			return nil, err
-		}
-		identifiers = append(identifiers, rawIdentifier{Name: identifier.value, Span: identifier.span})
-		parser.consume(tokenComma)
-	}
-	return identifiers, nil
 }
 
 func (parser *parser) identifierList(end tokenType, message string) ([]rawIdentifier, error) {

@@ -152,6 +152,45 @@ END
 	}
 }
 
+func TestProfileRejectsMissingInvariant(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "NoInvariant.mch")
+	content := "MACHINE NoInvariant\nSETS STATE = {a}\nVARIABLES current\nINITIALISATION current := a\nOPERATIONS\n    Op(evt) = PRE evt : STATE THEN current := a END\nEND"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := LoadFile(path)
+	if err == nil || !strings.Contains(err.Error(), "INVARIANT") {
+		t.Fatalf("error = %v, want INVARIANT required", err)
+	}
+}
+
+func TestProfileRejectsMissingInitialisation(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "NoInit.mch")
+	content := "MACHINE NoInit\nSETS STATE = {a}\nVARIABLES current\nINVARIANT current : STATE\nOPERATIONS\n    Op(evt) = PRE evt : STATE THEN current := a END\nEND"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := LoadFile(path)
+	if err == nil || !strings.Contains(err.Error(), "INITIALISATION") {
+		t.Fatalf("error = %v, want INITIALISATION required", err)
+	}
+}
+
+func TestProfileRejectsMissingOperations(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "NoOps.mch")
+	content := "MACHINE NoOps\nSETS STATE = {a}\nVARIABLES current\nINVARIANT current : STATE\nINITIALISATION current := a\nEND"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := LoadFile(path)
+	if err == nil || !strings.Contains(err.Error(), "OPERATIONS") {
+		t.Fatalf("error = %v, want OPERATIONS required", err)
+	}
+}
+
 func TestLoadRejectsMissingCurrentInvariant(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "MissingCurrent.mch")

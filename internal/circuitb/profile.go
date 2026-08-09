@@ -14,7 +14,18 @@ func (validator *profileValidator) machine(raw rawMachine) {
 	if raw.Name == "" {
 		validator.diagnostics = append(validator.diagnostics, Diagnostic{Span: raw.Span, Message: "machine name is required"})
 	}
-	validator.substitution(raw.Initialisation)
+	if !raw.HasInvariant {
+		validator.diagnostics = append(validator.diagnostics, Diagnostic{Span: raw.Span, Message: "INVARIANT clause is required"})
+	}
+	if !raw.HasInitialisation {
+		validator.diagnostics = append(validator.diagnostics, Diagnostic{Span: raw.Span, Message: "INITIALISATION clause is required"})
+	}
+	if !raw.HasOperations {
+		validator.diagnostics = append(validator.diagnostics, Diagnostic{Span: raw.Span, Message: "OPERATIONS clause is required"})
+	}
+	if raw.Initialisation != nil {
+		validator.substitution(raw.Initialisation)
+	}
 	for _, operation := range raw.Operations {
 		validator.operation(operation)
 	}

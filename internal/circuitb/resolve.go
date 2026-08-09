@@ -55,6 +55,9 @@ func (resolver *resolver) resolveSets() {
 }
 
 func (resolver *resolver) resolveVariables() {
+	if resolver.raw.Invariant == nil {
+		return
+	}
 	memberships := flattenMemberships(resolver.raw.Invariant)
 	for _, membership := range memberships {
 		identifier, ok := membership.Element.(rawIdentifierExpression)
@@ -81,6 +84,9 @@ func (resolver *resolver) resolveVariables() {
 
 func (resolver *resolver) resolveInitialisation() map[string]value {
 	values := map[string]value{}
+	if resolver.raw.Initialisation == nil {
+		return values
+	}
 	assignments := flattenAssignments(resolver.raw.Initialisation)
 	for _, assignment := range assignments {
 		variable, ok := resolver.variables[assignment.Name]
