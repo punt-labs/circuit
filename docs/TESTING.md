@@ -1,108 +1,126 @@
 # Testing
 
-`circuit` tests the B-machine engine, the runtime, and the harness adapters at
-different levels. Keep the lower layers fast and automated; keep harness-level
-tests small and explicit.
+`circuit` tests the B-machine engine, the runtime, the RPC protocol, the pi
+extension, and the B machines themselves. Every tier is automated.
 
-## Test pyramid
+## Testing pyramid
 
-- Unit: Circuit-B parser, resolver, profile validation, and evaluator.
-  Automated Go package tests.
-- Runtime: suspend/resume, check bindings, advance/block behavior. Automated Go
-  package tests.
-- CLI: user-facing commands work on sample machines. Automated Go CLI tests.
-- B-machine gate: checked-in machines pass ProB init and model-check. Requires
-  ProB; run with `make check-machines`.
-- pi extension smoke: project extension loads and runs circuit commands. Manual
-  smoke in pi and tmux.
-- Cross-harness behavior: pi, Claude Code, and opencode load instructions as
-  expected. Manual and documented.
+```text
+make check (automated, no external deps):
+  Go unit tests        circuitb, circuitrun, circuitrpc
+  Go CLI tests         cmd/circuit
+  TS unit tests        .pi extension parsing/routing
+  TS typecheck/lint    .pi extension types and style
+  golangci-lint        Go lint
+  markdownlint         docs
 
-## Unit tests
+make check-machines (automated, requires ProB):
+  ProB init + model-check for each .mch
 
-Unit tests live next to Go packages and should not need the network, GitHub,
-Beads, pi, opencode, Claude Code, or shell commands.
+make smoke-pi (automated, requires pi + model API key):
+  pi RPC smoke: list, start, status, advance against real pi
 
-They cover:
+make coverage (automated, shows all tier summaries):
+  Go engine coverage
+  Go RPC protocol coverage
+  TS pi extension coverage
+```
+
+## Go unit tests
+
+Unit tests live next to Go packages and should not need the network,
+GitHub, Beads, pi, opencode, Claude Code, or shell commands.
+
+### `internal/circuitb`
+
+Circuit-B parser, resolver, profile validator, and evaluator:
 
 - B-machine lexing/parsing
 - name/type resolution
-- Circuit-B profile validation
-- precondition evaluation
+- profile validation and rejection of unsupported constructs
+- precondition evaluation with enums, NAT, BOOL
 - state/advance result computation
-- BOOL preconditions and check binding behavior
 
-These run as part of `make check`.
+### `internal/circuitrun`
 
-## Runtime tests
+Runtime with suspend/resume lifecycle:
 
-Runtime tests exercise the `circuitrun` package:
-
-- suspend/resume lifecycle
+- suspend/resume serialization
 - start/status/advance/stop
-- check binding execution
-- check registry validation
-- error paths for missing machines, malformed suspended files, and unknown
-  registry entries
+- check binding execution and registry validation
+- error paths for missing machines, malformed files, unknown entries
 
-These run as part of `make check`.
+### `internal/circuitrpc`
 
-## CLI tests
+RPC protocol logic extracted from the circuit-drives-pi spike:
 
-CLI tests exercise the public command layer without requiring external
-services. They verify that commands accept machines, reject missing machines,
-and emit expected success or error output.
+- prompt formatting from status reports
+- operation extraction from agent responses
+- terminal state detection
+- message text extraction from JSONL events
+- fake-pi integration test: full runner loop against canned responses
 
-Current commands:
+## Go CLI tests
 
-- `list`
-- `start`
-- `status`
-- `advance`
-- `stop`
+CLI tests exercise the public command layer: list, start, status,
+advance, stop, help, and error paths for missing/extra arguments.
 
-These run as part of `make check`.
+## TypeScript unit tests
+
+Pi extension tests cover command parsing and routing logic:
+
+- `parseCircuitCommand` for all verbs, defaults, whitespace handling
+
+Run with vitest. Coverage reported via `@vitest/coverage-v8`.
 
 ## B-machine gate
 
-Every checked-in B machine should pass ProB init and model-check. Run with:
+Every checked-in B machine passes ProB init and model-check:
 
 ```bash
 make check-machines
 ```
 
-This requires ProB (`probcli`). It is not included in `make check` because
-ProB is a development dependency, not a runtime dependency.
+Requires ProB (`probcli`). Not included in `make check` because ProB
+is a development dependency, not a runtime dependency.
 
-## pi extension smoke
+## Pi RPC smoke test
 
-The project-local pi extension is tested as a smoke test in a real pi session.
-This is intentionally not part of `make check` yet because pi TUI testing is an
-integration concern and depends on trust/session behavior.
+Automated pass/fail test against a live pi process:
 
-A valid smoke run verifies:
+```bash
+make smoke-pi
+```
 
-- pi starts from the `circuit` repo
-- project-local extension loading is approved
-- the startup view lists the circuit extension
-- `/circuit list` shows available machines
-- `/circuit start build-job` starts an active circuit and reports state
-- `/circuit advance start` advances the active circuit
-- `/circuit status` reports the updated state
+Requires pi binary and a model API key. Tests the full extension
+command surface: list, start, status, advance through pi RPC. Exits
+0 on success, 1 on failure.
 
-Use tmux for visible pi sessions so the pane can be inspected and stopped.
+## Coverage targets
 
-## Cross-harness behavior
+Non-command packages should maintain ≥85% statement coverage:
 
-Instruction loading behavior is documented in `docs/HARNESS.md`. Keep these
-findings empirical: record what each harness actually loaded or executed, not
-what we assume from another harness.
+```text
+internal/circuitb     ≥85%
+internal/circuitrun   ≥85%
+internal/circuitrpc   ≥85%
+```
 
-## Required gate
+CLI and pi extension coverage is reported but not gated because those
+packages are thin adapters over the core runtime.
 
-Before committing code changes, run the project gate through the Nix shell:
+Run `make coverage` to see all tier summaries.
+
+## Required gates
+
+Before committing code changes:
 
 - `make check`
 
-Before changing Nix, Beads, or harness behavior, also perform the relevant smoke
-checks and record the result in the PR summary or docs.
+Before changing B machines:
+
+- `make check-machines`
+
+Before changing pi extension behavior:
+
+- `make smoke-pi` (when pi and credentials are available)

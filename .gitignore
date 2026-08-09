@@ -2,6 +2,8 @@
 /circuit
 dist/
 coverage.out
+coverage-*.out
+.pi/coverage/
 *.prob
 .pi/node_modules/
 

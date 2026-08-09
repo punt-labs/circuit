@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { parseCircuitCommand } from "./parse.js";
 
 const execFileAsync = promisify(execFile);
 const MACHINE_DIR = "machines";
@@ -53,22 +54,6 @@ export default function circuitExtension(pi: ExtensionAPI) {
 			}
 		},
 	});
-}
-
-interface CircuitCommand {
-	verb: "list" | "start" | "status" | "advance" | "stop";
-	argument?: string;
-}
-
-function parseCircuitCommand(args: string): CircuitCommand {
-	const fields = args.trim().split(/\s+/).filter(Boolean);
-	const verb = fields[0] ?? "status";
-	if (verb === "start" || verb === "advance") {
-		const argument = fields[1];
-		return argument ? { verb, argument } : { verb };
-	}
-	if (verb === "list" || verb === "status" || verb === "stop") return { verb };
-	return { verb: "status" };
 }
 
 async function listMachines(): Promise<string[]> {
