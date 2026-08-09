@@ -167,6 +167,88 @@ func TestBMachineStop(t *testing.T) {
 	}
 }
 
+func TestMissingCommandFails(t *testing.T) {
+	t.Parallel()
+	stderr := &bytes.Buffer{}
+	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr}
+
+	err := cmd.run([]string{})
+
+	if err == nil {
+		t.Fatal("empty command returned nil error")
+	}
+}
+
+func TestHelpPrintsUsage(t *testing.T) {
+	t.Parallel()
+	stderr := &bytes.Buffer{}
+	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr}
+
+	err := cmd.run([]string{"help"})
+
+	if err != nil {
+		t.Fatalf("help returned error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "usage:") {
+		t.Fatalf("help did not print usage: %q", stderr.String())
+	}
+}
+
+func TestListRejectsExtraArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"list", "extra"})
+
+	if err == nil {
+		t.Fatal("list with extra args returned nil error")
+	}
+}
+
+func TestStartRejectsNoArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"start"})
+
+	if err == nil {
+		t.Fatal("start with no args returned nil error")
+	}
+}
+
+func TestStatusRejectsExtraArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"status", "extra"})
+
+	if err == nil {
+		t.Fatal("status with extra args returned nil error")
+	}
+}
+
+func TestAdvanceRejectsNoArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"advance"})
+
+	if err == nil {
+		t.Fatal("advance with no args returned nil error")
+	}
+}
+
+func TestStopRejectsExtraArgs(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+
+	err := cmd.run([]string{"stop", "extra"})
+
+	if err == nil {
+		t.Fatal("stop with extra args returned nil error")
+	}
+}
+
 func TestUnknownCommandFails(t *testing.T) {
 	t.Parallel()
 	stderr := &bytes.Buffer{}

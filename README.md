@@ -299,33 +299,36 @@ Done:
 - Go/staticcheck/markdownlint tooling
 - pi extension TypeScript tooling
 
-### Milestone 3: B-machine foundation
+### Milestone 2: B-machine foundation
 
-In progress:
+Done:
 
-- added `machines/build-job.mch`
-- added ProB development gate: `make check-machines`
-- implemented a narrow multi-pass Circuit-B lexer/parser/evaluator in Go
-- support `start`, `status`, and `advance` for the simple machine
-- tests prove the Go runtime can load the same `.mch` that ProB checks
+- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`
+- ProB development gate: `make check-machines`
+- multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
+- suspend/resume runtime (`internal/circuitrun`)
+- CLI: `list`, `start`, `status`, `advance`, `stop`
+- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`
+- golangci-lint adopted matching ethos conventions
+- test coverage ≥85% on core packages
 
-### Milestone 4: real PR-watch machine
+### Milestone 3: harness spikes
 
-Next after the B foundation:
+Done:
 
-- add `machines/PRWatch.mch`
-- model PR facts explicitly
-- distinguish terminal states from unexpected deadlocks
-- prove/model-check the machine with ProB
-- run the Go evaluator against representative fact sets
+- spike 2: pi hosts circuit — `/circuit` commands shell out to Go CLI
+- spike 3: circuit drives pi — Go runner owns B-machine state, sends prompts
+  to `pi --mode rpc`, validates agent responses against the machine
+- both relationships use the same `.mch` files and Go evaluator
 
-### Milestone 5: B-backed harness spikes
+### Milestone 4: usefulness proof
 
-Next after `PRWatch.mch`:
+Next:
 
-- pi-hosted extension spike
-- circuit-driven pi RPC spike
-- document which relationship works better for interactive use and automation
+- context injection: agent sees state and valid operations automatically
+- LLM tools: agent calls `circuit_advance`, not human `/circuit advance`
+- gating: agent cannot claim progress the machine has not validated
+- real workflow machine with facts and external check bindings
 
 ## Design principle
 
