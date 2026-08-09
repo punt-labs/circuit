@@ -71,8 +71,9 @@ blocked with `gateOpen: FALSE (invocations: 1)`. Second `advance
 proceed` passes with `gateOpen: TRUE (invocations: 2)` and advances
 `waiting -> done`. The runtime preserves check state and invocation
 counts across suspend/resume boundaries. Tested at Go runtime, CLI,
-and ProB levels. Not yet tested with an agent driving the retry loop
-automatically.
+and ProB levels. Agent-driven retry also verified: agent called
+`circuit_advance`, received blocked feedback, and retried
+successfully.
 
 ## 6. Session persistence across harness restarts
 
