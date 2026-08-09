@@ -1,0 +1,9 @@
+checks:
+  makeCheck:
+    kind: command
+    command: make check
+    returns: BOOL
+  alternatingCheck:
+    kind: command
+    command: sh machines/alternating-check.sh
+    returns: BOOL

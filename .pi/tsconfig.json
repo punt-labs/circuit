@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"exactOptionalPropertyTypes": true,
+		"lib": ["ES2023"],
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"noEmit": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitReturns": true,
+		"noUncheckedIndexedAccess": true,
+		"resolveJsonModule": true,
+		"strict": true,
+		"target": "ES2023",
+		"types": ["node"],
+		"useUnknownInCatchVariables": true,
+		"verbatimModuleSyntax": true
+	},
+	"include": [
+		"extensions/**/*.ts",
+		"lib/**/*.ts",
+		"tests/**/*.ts",
+		"types/**/*.d.ts",
+		"eslint.config.mjs"
+	]
+}

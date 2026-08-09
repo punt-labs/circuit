@@ -1,12 +1,20 @@
 # circuit
 
-A tiny state-machine engine for agent workflow loops.
+A tiny formal state-machine engine for agent workflow loops.
 
-`circuit` starts as a deliberately small real project: implement the smallest
-useful subset of Punt Labs' playbook state-machine design, while dogfooding our
-development tooling across **pi**, **Claude Code**, and **opencode**. The core
-product is the state-machine engine; harness support is how we test and use it,
-not the product itself.
+`circuit` is a small real project for testing whether agent harnesses such as
+**pi**, **Claude Code**, and **opencode** can be guided by an explicit workflow
+machine instead of a long prompt. The harness should know the current state,
+which operations are valid from that state, and which facts must hold before the
+workflow can progress.
+
+Shipped workflow machines are authored as
+[B-Method](https://en.wikipedia.org/wiki/B-Method) abstract machines, proven or
+model-checked with ProB during development, and interpreted by Go at runtime
+without requiring ProB for normal use.
+
+Design notes: [`docs/design/b-machines.md`](docs/design/b-machines.md) and
+[`docs/spec/circuit-runtime.tex`](docs/spec/circuit-runtime.tex).
 
 ## Why this exists
 
@@ -18,98 +26,246 @@ what it sees:
 - checks are green and review is clean -> merge
 - nothing actionable yet -> wait and poll again
 
-Today these loops are often retyped as prompts. `circuit` makes them reviewed,
-versioned artifacts: named states, guarded transitions, polling ticks, and
-terminal states.
+Today these loops are often retyped as prompts. `circuit` should make them
+reviewed, versioned, executable contracts: named states, typed facts, guarded
+operations, terminal states, and mechanically checked progress rules.
 
-The design seed is Punt Kit's playbook state-machine draft:
+The central invariant is:
 
 ```text
-punt-kit/docs/designs/playbook-state-machines.md
+A harness may request progress, but the machine decides whether progress is
+valid.
 ```
 
-## Initial scope
+## Current status
 
-The first useful command should be:
+Implemented now:
+
+- Nix development shell with golangci-lint matching ethos conventions
+- `make check` gate for engine, RPC protocol, pi extension, and docs
+- project-local pi extension at `.pi/extensions/circuit.ts` with context
+  injection via `before_agent_start`, eight LLM tools (`circuit_list`,
+  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
+  `circuit_advance`, `circuit_stop`, `circuit_unload`), and `/circuit` slash
+  commands for human control
+- B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
+- Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
+- multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
+  session IDs and auto-stop on terminal states
+- RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
+  test
+- CLI commands: `list`, `load`, `scaffold`, `start`, `status`, `advance`,
+  `stop`, `unload`
+- check bindings for runtime preconditions with invocation tracking; machines
+  with BOOL facts must load with complete bindings before they can start
+- `retry-flow` machine proving block/retry loops work
+- ProB development gate: `make check-machines`
+- automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
+  smoke test
+- first live test: agent called `circuit_status` then `circuit_advance`
+  unprompted and progressed `build-job` from `idle` to `running`
+
+## Direction: B machines
+
+Circuit workflow definitions should be B abstract machines.
+
+A small machine looks like this:
+
+```b
+MACHINE BuildJob
+SETS
+    STATE = {idle, running, done};
+    TRANSITION = {start, finish}
+VARIABLES
+    current
+INVARIANT
+    current : STATE
+INITIALISATION
+    current := idle
+OPERATIONS
+    Advance(evt) =
+        PRE
+            evt : TRANSITION &
+            current /= done &
+            (
+                (current = idle & evt = start) or
+                (current = running & evt = finish)
+            )
+        THEN
+            IF current = idle & evt = start THEN
+                current := running
+            ELSIF current = running & evt = finish THEN
+                current := done
+            END
+        END
+END
+```
+
+This maps directly to the workflow problem:
+
+| Circuit concept | B concept |
+| --- | --- |
+| workflow definition | `MACHINE` |
+| states and operation names | enumerated `SETS` |
+| current workflow position | `VARIABLES current` |
+| observed facts | additional `VARIABLES` |
+| safety constraints | `INVARIANT` |
+| starting state | `INITIALISATION` |
+| transition request | `OPERATION` |
+| guard condition | `PRE` |
+| state update | substitution after `THEN` |
+
+Development can require ProB:
 
 ```bash
-circuit validate examples/pr-watch.yaml
+make check-machines
 ```
 
-The initial engine validates structure only. It does **not** execute real PR
-workflows yet.
+Runtime does not require ProB:
 
-Planned first subset:
+```bash
+circuit list
+circuit load review-flow
+circuit scaffold review-flow
+circuit start build-job
+circuit status
+circuit advance start
+circuit advance finish
 
-- parse YAML playbooks
-- require exactly one of `steps` or `states`
-- for state machines, use the first state as the initial state
-- validate unique state IDs
-- validate transition targets
-- detect terminal states
-- detect stuck non-terminal states without `poll`
-- print clear diagnostics
-- print a small human-readable summary
+# With multiple sessions, target one explicitly:
+circuit start build-job
+circuit start review-flow
+circuit status
+circuit advance start build-job-a3f8
+circuit stop review-flow-b4c9
+```
 
-Out of scope for the first milestone:
+The Go runtime parses and evaluates a strict Circuit-B profile. It does not try
+to interpret all B. Valid B outside the profile fails with a clear runtime
+diagnostic explaining which construct is unsupported.
 
-- GitHub API integration
-- scheduler daemon
-- persistent run-state
-- MCP server
-- config renderer
-- permission/policy generator
-- full playbook execution
+## Runtime model
 
-## Language
+A circuit machine should answer four practical questions:
 
-`circuit` is a Go project.
+1. What machine is active?
+2. What B-machine state is the active circuit in?
+3. Which operations are enabled or blocked now?
+4. If a requested operation is allowed, what is the next state?
 
-Reasons:
+The user-facing command for this is `status`, not `state`. State is the B-machine
+variable. Status is the operational report about the active circuit. Today it
+includes the active machine, current state, enabled operations, blocked
+operations, and any check results collected during transition attempts. Later it
+should also include runtime metadata such as start time, elapsed time, accepted
+transition count, blocked transition count, and the latest accepted or blocked
+operation.
 
-- small, fast CLI
-- explicit structs for schema validation
-- easy static-ish binaries and `go install`
-- good fit for state-machine graph checks
-- thin harness adapters can shell out to the CLI
-- Punt Labs already has Go tooling and standards from projects like Beadle and
-  Ethos
+Runtime preconditions that depend on the outside world are represented as B
+booleans and bound to registered checks outside B. For example,
+`review-flow.mch` requires `makeCheckPassed = TRUE` before advancing from
+`coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
+`makeCheck` registry entry in `check-registry.yaml`. A machine with BOOL facts
+must load with complete bindings before it can start. Use
+`circuit scaffold <machine>` to generate missing bindings and registry stubs;
+stubs default to `false`, so incomplete integrations block safely.
 
-The pi extension, when added, will be TypeScript because pi extensions are
-TypeScript. It should remain a wrapper around the Go CLI, not a second engine.
+Circuit manages multiple sessions. A session is one running instance of a
+machine, identified as `<machine>-<4hex>` such as `build-job-a3f8`. Each session
+has independent B state and check history. The runtime lifecycle is:
+
+- `unloaded` — no session is selected or persisted
+- `active` — machine is loaded in memory and internal workflow state is
+  progressing
+- `suspended` — machine is serialized to disk between short CLI invocations
+- `stopped` — machine reached a terminal state or was explicitly stopped
+
+Short-lived CLI commands implicitly resume and suspend:
+`suspended → active → suspended`. When a machine reaches a terminal state
+(no enabled operations), that session auto-stops without affecting other active
+sessions. `status` reports known active or stopped sessions; with no known
+session it reports "no session" instead of an error.
+
+Active sessions are stored as JSON files under `.tmp/sessions/`. The old
+`.tmp/circuit.suspended.json` path is read only for migration from the earlier
+single-session runtime.
+
+The harness adapter is responsible for UI and observation. The machine remains
+the authority for valid progress.
+
+For pi, that means two relationships are worth testing:
+
+1. **Pi hosts the engine.** A pi extension calls the Go runtime, displays the
+   current state, and exposes commands/tools to request valid operations.
+2. **Circuit drives pi.** A circuit runner owns the machine state and uses pi RPC
+   as an agent backend for observation and action.
+
+Both relationships should use the same `.mch` file and the same Go evaluator.
+
+## Circuit-B parser approach
+
+The Go implementation treats Circuit-B as a small compiler problem, not as
+string matching.
+
+Current passes:
+
+1. **Lex and parse structure.** Build a raw AST with source spans.
+2. **Resolve names and types.** Distinguish variables, sets, enum values, and
+   operation parameters.
+3. **Validate the Circuit-B profile.** Reject unsupported B constructs with
+   actionable diagnostics.
+4. **Evaluate.** Compute enabled operations and apply supported substitutions.
+
+Every token and AST node should retain source location information so that
+syntax errors, type errors, and profile violations can point back to the author
+source.
 
 ## Nix-first development
 
 `circuit` is Nix-first from the start.
 
-Nix will provide system/toolchain dependencies such as:
-
-- Go 1.26
-- `gopls`
-- `go-tools` / `staticcheck`
-- `markdownlint-cli2`
-- shell tooling (`git`, `gh`, `jq`, `ripgrep`, `shellcheck`, etc.)
-
-Go modules still own Go dependencies. Nix owns the toolchain, not vendored Go
-packages.
-
-Expected workflow once `flake.nix` exists:
+The dev shell provides Go, Node, markdown linting, staticcheck, Beads, GitHub
+CLI, and shell tooling. Normal development should happen inside the Nix shell:
 
 ```bash
 nix develop
 make check
 ```
 
-Non-Nix development should remain possible:
+Non-Nix development should remain possible for contributors who already have
+the required tools installed.
 
-```bash
-go install honnef.co/go/tools/cmd/staticcheck@latest
-make check
-```
+## Make targets
 
-Nix is a supported reproducible dev environment, not a required runtime.
+The root Makefile is organized around product surfaces, not implementation
+languages:
+
+- `check-engine` validates the Go engine/CLI.
+- `check-pi-extension` validates the project-local pi extension.
+- `check-docs` validates Markdown documentation.
+- `check-specs` validates formal Z design specs with fuzz and ProB.
+- `check-machines` validates B machines with ProB for development/release.
+- `check` runs the automated aggregate gate.
+
+Additional targets:
+
+- `lint` — alias for `lint-engine`
+- `test` — runs all tests: Go engine, RPC protocol, and pi extension
+- `build` — alias for `build-engine`
+- `docs` — alias for `check-docs`
+- `format` — auto-format Go and TypeScript
+- `coverage` — show coverage summary for all tiers
+- `check-runtime-spec` — type-check the Circuit runtime Z spec with z-spec
+- `model-check-runtime-spec` — model-check the Circuit runtime Z spec with ProB
+- `smoke-pi` — pi RPC smoke test (requires pi + model API key)
+- `tools` — install development tools (golangci-lint)
+- `install` — build and install to `~/.local/bin`
 
 ## Harness testbed
+
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for local setup,
+[`docs/HARNESS.md`](docs/HARNESS.md) for harness notes, and
+[`docs/TESTING.md`](docs/TESTING.md) for the testing pyramid.
 
 `circuit` is also our smallest cross-harness test project. We will test each
 harness according to its own idioms instead of forcing Claude Code conventions
@@ -117,27 +273,50 @@ onto the others.
 
 ### Shared instructions
 
-We will test whether `AGENTS.md` can be the harness-neutral instruction source.
-Claude Code may use a small `CLAUDE.md` stub/addendum if needed. Pi's documented
-context loading includes `AGENTS.md`, `CLAUDE.md`, and `AGENTS.override.md`; we
-will verify precedence empirically in this repo before standardizing a pattern.
+`AGENTS.md` is the intended harness-neutral instruction source. Claude Code may
+use `CLAUDE.md` as a small entrypoint/addendum. Pi's observed behavior in this
+repo loads the shared instructions from `AGENTS.md`.
 
 ### pi
 
-Pi support should start minimal:
-
-- use normal context files (`AGENTS.md` / `CLAUDE.md` behavior)
-- use Nix for tools
-- use `tmux` + `watch` for visible PR monitoring
-- add a project-local pi extension only after the CLI exists
-
-First pi extension idea:
+Pi support currently includes a project-local TypeScript extension:
 
 ```text
-/circuit validate examples/pr-watch.yaml
+.pi/extensions/circuit.ts
 ```
 
-The extension should shell out to the Go CLI.
+The extension shells out to the Go CLI and keeps transition logic in Go. Current
+commands:
+
+Slash commands (human control):
+
+- `/circuit list`
+- `/circuit load <machine>`
+- `/circuit scaffold <machine>`
+- `/circuit start <machine>`
+- `/circuit status [session]`
+- `/circuit advance <event> [session]`
+- `/circuit stop [session]`
+- `/circuit unload <session>`
+
+LLM tools (agent calls these directly):
+
+- `circuit_list`
+- `circuit_load`
+- `circuit_scaffold`
+- `circuit_start`
+- `circuit_status`
+- `circuit_advance`
+- `circuit_stop`
+- `circuit_unload`
+
+Full parity: anything the human can do, the agent can do. The B-backed
+Go runtime decides whether progress is valid.
+
+The other relationship — circuit as the outer runner driving `pi --mode rpc` —
+was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
+state, sent prompts, observed `agent_settled`, extracted the agent's chosen
+operation, and validated it against the machine before advancing.
 
 ### Claude Code
 
@@ -145,7 +324,7 @@ Claude Code support should stay native:
 
 - `CLAUDE.md` for Claude-specific entrypoint/addendum
 - optional `.claude/commands/` later
-- no hooks or subagents in the initial scaffold
+- no hooks or subagents until the B-machine contract is stable
 
 ### opencode
 
@@ -154,66 +333,70 @@ Opencode support should stay native:
 - `AGENTS.md`
 - optional `opencode.json` once we actively test opencode
 
-## Proposed repository shape
-
-Initial minimal shape:
-
-```text
-README.md
-AGENTS.md
-CLAUDE.md
-Makefile
-flake.nix
-flake.lock
-go.mod
-cmd/circuit/main.go
-internal/playbook/
-examples/pr-watch.yaml
-docs/DEVELOPMENT.md
-docs/HARNESS.md
-```
-
-Do not add all of this at once unless a milestone needs it. The first commit can
-remain mostly documentation and scaffold.
-
-## Milestones
+## Near-term milestones
 
 ### Milestone 0: scaffold
+
+Done:
 
 - README
 - Nix-first development decision
 - Go language decision
 - harness strategy
 
-### Milestone 1: minimal CLI
+### Milestone 1: toolchain gates
 
-- `circuit validate <file>`
-- `circuit summary <file>`
-- YAML parsing
-- structural validation
-- tests
-
-### Milestone 2: Nix dev shell
+Done:
 
 - `flake.nix`
 - `flake.lock`
 - `make check`
 - Go/staticcheck/markdownlint tooling
+- pi extension TypeScript tooling
 
-### Milestone 3: pi extension
+### Milestone 2: B-machine foundation
 
-- `.pi/extensions/circuit.ts`
-- register a small command
-- shell out to `circuit validate`
-- document trust/reload behavior
+Done:
 
-### Milestone 4: opencode and Claude Code comparison
+- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`
+- ProB development gate: `make check-machines`
+- multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
+- multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
+- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`,
+  `unload`
+- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`, and
+  generated false stubs from `scaffold`
+- golangci-lint adopted matching ethos conventions
+- test coverage ≥85% on core packages
 
-- verify instruction loading
-- add minimal native config if useful
-- document tradeoffs
+### Milestone 3: harness spikes
+
+Done:
+
+- spike 2: pi hosts circuit — `/circuit` commands shell out to Go CLI
+- spike 3: circuit drives pi — Go runner owns B-machine state, sends prompts
+  to `pi --mode rpc`, validates agent responses against the machine
+- both relationships use the same `.mch` files and Go evaluator
+
+### Milestone 4: usefulness proof
+
+In progress:
+
+- context injection: `before_agent_start` injects current circuit state and
+  valid operations into the agent's context on every turn
+- LLM tools: full parity with slash commands — `circuit_list`,
+  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
+  `circuit_advance`, `circuit_stop`, `circuit_unload`
+- gating: `circuit_advance` tool enforces B-machine preconditions; blocked
+  transitions produce agent-visible feedback with failed conditions
+- session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with
+  per-session auto-stop on terminal states; no injection when no session is
+  active; multiple active sessions inject together
+- first live test: agent called `circuit_status` then `circuit_advance`
+  unprompted and progressed `build-job` from `idle` to `running`
 
 ## Design principle
 
-Keep the engine tiny and boring. Use this repo to expose tooling friction, not
-to hide it behind abstractions too early.
+Keep the runtime tiny and boring. Put the mathematical precision in the B
+machine, prove it during development, and make harness adapters obey it at
+runtime.
