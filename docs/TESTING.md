@@ -43,8 +43,10 @@ Circuit-B parser, resolver, profile validator, and evaluator:
 
 ### `internal/circuitrun`
 
-Runtime with suspend/resume lifecycle:
+Runtime with session lifecycle:
 
+- session states: unloaded, active, suspended, stopped
+- auto-stop on terminal state
 - suspend/resume serialization
 - start/status/advance/stop
 - check binding execution and registry validation
@@ -67,9 +69,13 @@ advance, stop, help, and error paths for missing/extra arguments.
 
 ## TypeScript unit tests
 
-Pi extension tests cover command parsing and routing logic:
+Pi extension tests cover command parsing, routing, and context logic:
 
 - `parseCircuitCommand` for all verbs, defaults, whitespace handling
+- `parseCircuitStatus` for CLI output parsing
+- `formatContextInjection` for agent context text
+- `parseAdvanceOutput` for advance result parsing
+- `formatToolResult` for tool result formatting
 
 Run with vitest. Coverage reported via `@vitest/coverage-v8`.
 

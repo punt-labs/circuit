@@ -440,28 +440,32 @@ checks:
   makeCheckPassed: TRUE (invocations: 1)
 ```
 
-## Runtime lifecycle: suspend and resume
+## Runtime lifecycle: sessions
 
-The runtime model is in-memory first. The Go `Runtime` owns the active machine,
-current B values, check values, invocation counts, and transition results while
-executing a command or while a future long-running process is alive.
-
-Short-lived CLI invocations use implicit lifecycle boundaries:
+Each circuit run is a session with explicit lifecycle states:
 
 ```text
-resume -> operate in memory -> suspend
+SessionState ::= unloaded | active | suspended | stopped
 ```
 
-The suspended form is stored at:
+- `unloaded` — no machine selected.
+- `active` — machine is in memory, workflow state is progressing.
+- `suspended` — machine paused to `.tmp/circuit.suspended.json`.
+- `stopped` — machine reached a terminal state or was explicitly stopped.
+
+Short-lived CLI invocations use implicit boundaries:
 
 ```text
-.tmp/circuit.suspended.json
+suspended -> active -> suspended
 ```
 
-This file is not the conceptual source of runtime state. It is a pause/resume
-serialization artifact, analogous to closing and reopening a laptop. A future
-long-running `circuit` process should keep the same `Runtime` in memory and
-suspend only on exit, explicit pause, or recovery boundary.
+When `Advance` reaches a terminal state (no enabled operations), the session
+automatically transitions to `stopped`. Suspending a stopped session clears the
+suspended file. `Status` and `Advance` require an active session; `status` with
+no active session reports "no active session" as informational output, not an
+error.
+
+Context injection in pi fires only when a session is active.
 
 ## Runtime commands
 

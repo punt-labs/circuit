@@ -82,3 +82,9 @@ extension does not automatically resume the circuit. There is no
 session-entry integration.
 
 Risk: active circuits are silently lost on harness restart.
+
+**Session lifecycle update:** sessions now have explicit states
+(unloaded, active, suspended, stopped). Terminal states auto-stop
+the session, which clears the suspended file. Context injection only
+fires when a session is active. This reduces the stale-state problem
+but does not solve pi-session-entry integration.

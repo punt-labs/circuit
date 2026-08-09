@@ -43,8 +43,9 @@ Implemented now:
 - Nix development shell with golangci-lint matching ethos conventions
 - `make check` gate for engine, RPC protocol, pi extension, and docs
 - project-local pi extension at `.pi/extensions/circuit.ts` with context
-  injection, `circuit_status` and `circuit_advance` LLM tools, and
-  `/circuit` slash commands for human control
+  injection via `before_agent_start`, five LLM tools (`circuit_list`,
+  `circuit_start`, `circuit_status`, `circuit_advance`, `circuit_stop`),
+  and `/circuit` slash commands for human control
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
 - session lifecycle runtime under `internal/circuitrun/` with auto-stop on
@@ -224,12 +225,17 @@ languages:
 - `check-machines` validates B machines with ProB for development/release.
 - `check` runs the automated aggregate gate.
 
-Compatibility aliases remain:
+Additional targets:
 
-- `lint` -> `lint-engine`
-- `test` -> `test-engine`
-- `build` -> `build-engine`
-- `docs` -> `check-docs`
+- `lint` — alias for `lint-engine`
+- `test` — runs all tests: Go engine, RPC protocol, and pi extension
+- `build` — alias for `build-engine`
+- `docs` — alias for `check-docs`
+- `format` — auto-format Go and TypeScript
+- `coverage` — show coverage summary for all tiers
+- `smoke-pi` — pi RPC smoke test (requires pi + model API key)
+- `tools` — install development tools (golangci-lint)
+- `install` — build and install to `~/.local/bin`
 
 ## Harness testbed
 
@@ -346,11 +352,12 @@ In progress:
 
 - context injection: `before_agent_start` injects current circuit state and
   valid operations into the agent's context on every turn
-- LLM tools: `circuit_status` and `circuit_advance` registered with pi so
-  the agent calls them directly instead of human slash commands
+- LLM tools: full parity with slash commands — `circuit_list`,
+  `circuit_start`, `circuit_status`, `circuit_advance`, `circuit_stop`
 - gating: `circuit_advance` tool enforces B-machine preconditions; blocked
   transitions produce agent-visible feedback with failed conditions
-- slash commands remain for human control: `/circuit start`, `/circuit stop`
+- session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with
+  auto-stop on terminal states; no injection when no session is active
 - first live test: agent called `circuit_status` then `circuit_advance`
   unprompted and progressed `build-job` from `idle` to `running`
 

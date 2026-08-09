@@ -62,17 +62,21 @@ Slash commands (human control):
   circuit.
 - `/circuit stop` clears the active circuit.
 
-LLM tools (agent calls these automatically):
+LLM tools (full parity with slash commands):
 
+- `circuit_list` lists available machines.
+- `circuit_start` starts an active circuit from a named machine.
 - `circuit_status` reports active circuit state and valid operations.
 - `circuit_advance` requests a transition; the B machine validates the
   precondition and returns allowed or blocked.
+- `circuit_stop` clears the active circuit.
 
 Context injection:
 
 - On every agent turn, `before_agent_start` injects the current circuit
-  state and valid operations into the agent's context so the agent sees
-  the machine without manual commands.
+  state and valid operations into the agent's context when a session is
+  active. No injection when no session is active or after auto-stop on
+  terminal state.
 
 ## opencode
 
@@ -98,7 +102,7 @@ The same startup check warned that tmux is using `extended-keys-format xterm`;
 pi recommends `csi-u` for best modified-key handling.
 
 A later pi startup check with project approval showed the project extension
-loaded from `.pi/extensions/circuit.ts`. Running the extension command against
+loaded from `.pi/extensions/circuit.ts`.
 
 The pi-hosted Circuit spike keeps pi as the interactive harness and delegates
 machine semantics to Go. The expected manual smoke path is:

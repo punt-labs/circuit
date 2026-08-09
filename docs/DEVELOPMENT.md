@@ -13,7 +13,8 @@ The required local gate is `make check`.
 
 Non-Nix development should remain possible for contributors who already have the
 required tools installed. The main requirements are Go 1.26 or newer,
-staticcheck, Node/npm for markdown lint fallback behavior, and GNU or BSD make.
+golangci-lint, Node/npm for TypeScript and markdown lint, and GNU or BSD make.
+Run `make tools` to install golangci-lint.
 
 Nix is the reproducible development environment, not a runtime requirement for
 the `circuit` binary.
@@ -25,8 +26,10 @@ Run Beads from the Nix dev shell so the CLI comes from the repo toolchain.
 
 ## Quality gate
 
-Run the full gate before committing implementation changes. The gate covers Go
-formatting, Go vet, staticcheck, markdown linting, and race-enabled Go tests.
+Run the full gate before committing implementation changes. `make check`
+auto-formats Go and TypeScript, then runs golangci-lint (govet + staticcheck +
+unused + gofmt), Go tests with race detection and coverage, TypeScript
+typecheck/lint/test, and markdown linting.
 
 ## Harness work
 
