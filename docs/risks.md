@@ -13,6 +13,12 @@ against a circuit machine.
 
 Risk: the machine is correct but the agent ignores or works around it.
 
+**Milestone 4 update:** the agent called `circuit_status` and
+`circuit_advance` tools unprompted when asked to advance. It did not
+attempt to bypass the machine. This is a positive signal but only for
+a trivial machine (`build-job`). A real multi-step workflow with
+ambiguous choices has not been tested.
+
 ## 2. Context injection changes agent decisions
 
 The spikes used explicit prompts or manual slash commands. Neither
@@ -21,6 +27,14 @@ context actually steers the agent's tool use and reasoning.
 
 Risk: the agent does not meaningfully use circuit state even when it is
 in context.
+
+**Milestone 4 update:** context injection is now implemented via
+`before_agent_start`. The agent received circuit state in context and
+used the `circuit_advance` tool to progress `build-job` from `idle` to
+`running` on the first attempt. The injection included enabled/blocked
+operations and a guideline to use `circuit_advance`. The agent
+complied. Not yet tested whether injection changes behavior when the
+agent has a competing goal or when multiple operations are enabled.
 
 ## 3. Facts from real observations
 

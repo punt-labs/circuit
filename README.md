@@ -332,6 +332,8 @@ In progress:
 - gating: `circuit_advance` tool enforces B-machine preconditions; blocked
   transitions produce agent-visible feedback with failed conditions
 - slash commands remain for human control: `/circuit start`, `/circuit stop`
+- first live test: agent called `circuit_status` then `circuit_advance`
+  unprompted and progressed `build-job` from `idle` to `running`
 
 ## Design principle
 
