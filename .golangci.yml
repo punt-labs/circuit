@@ -1,0 +1,27 @@
+# golangci-lint config for circuit.
+#
+# Matches the ethos convention: golangci-lint v2 with a conservative linter
+# set. Only linters the tree passes clean today are enabled.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - unused
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF*
+
+formatters:
+  enable:
+    - gofmt
