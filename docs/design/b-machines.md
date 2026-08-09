@@ -538,8 +538,11 @@ circuit runner
   -> sends next-state guidance to pi
 ```
 
-This is better for headless or supervised automation. It should remain a spike
-until the B runtime contract is stable.
+This is better for headless or supervised automation. The spike
+(`cmd/circuit-rpc-spike/`) demonstrated a full `idle -> running -> done` loop
+where the Go runner owned the B-machine state, sent state-aware prompts to
+`pi --mode rpc`, waited for `agent_settled`, extracted the agent's chosen
+operation, and validated it against the B machine before advancing.
 
 ## Go package shape
 

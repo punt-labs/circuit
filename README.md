@@ -258,9 +258,10 @@ requests transitions, while the B-backed Go runtime decides whether progress is
 valid. The extension tracks one active circuit in the pi extension process after
 `/circuit start <machine>`.
 
-Next pi work should test the other relationship:
-
-- circuit runner drives `pi --mode rpc`.
+The other relationship — circuit as the outer runner driving `pi --mode rpc` —
+was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
+state, sent prompts, observed `agent_settled`, extracted the agent's chosen
+operation, and validated it against the machine before advancing.
 
 ### Claude Code
 
