@@ -30,6 +30,56 @@ export default function circuitExtension(pi: ExtensionAPI) {
 	// -- LLM tools: agent calls these instead of human slash commands --
 
 	pi.registerTool({
+		name: "circuit_list",
+		label: "Circuit List",
+		description: "List available circuit machines.",
+		promptSnippet: "List available circuit machines from machines/*.mch",
+		parameters: {},
+		async execute() {
+			const machines = await listMachines();
+			const text = machines.length > 0 ? machines.join("\n") : "No machines found";
+			return {
+				content: [{ type: "text" as const, text }],
+				details: { ok: true, count: machines.length },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "circuit_start",
+		label: "Circuit Start",
+		description: "Start an active circuit from a named machine.",
+		promptSnippet: "Start a circuit machine to begin a guided workflow",
+		promptGuidelines: [
+			"Use circuit_list to discover available machines before calling circuit_start.",
+		],
+		parameters: {
+			type: "object",
+			properties: {
+				machine: {
+					type: "string",
+					description: "Machine name, e.g. 'build-job', 'review-flow'",
+				},
+			},
+			required: ["machine"],
+		},
+		async execute(_toolCallId, params) {
+			const machine = (params as { machine: string }).machine;
+			if (!machine) {
+				return {
+					content: [{ type: "text" as const, text: "missing machine parameter" }],
+					details: { ok: false },
+				};
+			}
+			const result = await runCircuit(["start", machine]);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: "circuit_status",
 		label: "Circuit Status",
 		description: "Report the active circuit machine state, enabled and blocked operations.",
@@ -84,7 +134,22 @@ export default function circuitExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// -- Slash commands: human affordances for starting/stopping circuits --
+	pi.registerTool({
+		name: "circuit_stop",
+		label: "Circuit Stop",
+		description: "Clear the active circuit.",
+		promptSnippet: "Stop the active circuit machine",
+		parameters: {},
+		async execute() {
+			const result = await runCircuit(["stop"]);
+			return {
+				content: [{ type: "text" as const, text: result.message }],
+				details: { ok: result.ok },
+			};
+		},
+	});
+
+	// -- Slash commands: human affordances --
 
 	pi.registerCommand("circuit", {
 		description: "Manage the active Circuit machine: /circuit <list|start|status|advance|stop>",
