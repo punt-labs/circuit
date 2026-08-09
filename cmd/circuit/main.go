@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"sort"
 
-	"github.com/punt-labs/circuit/internal/playbook"
+	"github.com/punt-labs/circuit/internal/circuitrun"
 )
 
 const exitUsage = 2
@@ -15,6 +15,7 @@ const exitUsage = 2
 type command struct {
 	stdout io.Writer
 	stderr io.Writer
+	cwd    string
 }
 
 func main() {
@@ -35,84 +36,182 @@ func (cmd command) run(args []string) error {
 	case "help", "--help", "-h":
 		cmd.printUsage()
 		return nil
-	case "validate":
-		return cmd.validate(args[1:])
-	case "summary":
-		return cmd.summary(args[1:])
+	case "list":
+		return cmd.listMachines(args[1:])
+	case "start":
+		return cmd.start(args[1:])
+	case "status":
+		return cmd.status(args[1:])
+	case "advance":
+		return cmd.advance(args[1:])
+	case "stop":
+		return cmd.stop(args[1:])
 	default:
 		cmd.printUsage()
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
 }
 
-func (cmd command) validate(args []string) error {
-	path, err := singlePath(args)
+func (cmd command) listMachines(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("expected no arguments, got %d", len(args))
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
-	info, err := inspectFile(path)
+	names, err := runtime.ListMachines()
 	if err != nil {
 		return err
 	}
-	document, err := playbook.ParseFile(info.cleanPath)
-	if err != nil {
-		return err
+	for _, name := range names {
+		fmt.Fprintln(cmd.stdout, name)
 	}
-	result := playbook.Validate(document)
-	if !result.OK() {
-		return result
-	}
-	fmt.Fprintf(cmd.stdout, "valid: %s\n", info.cleanPath)
 	return nil
 }
 
-func (cmd command) summary(args []string) error {
-	path, err := singlePath(args)
+func (cmd command) start(args []string) error {
+	machine, err := singleArg(args)
 	if err != nil {
 		return err
 	}
-	info, err := inspectFile(path)
+	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
-	document, err := playbook.ParseFile(info.cleanPath)
+	report, err := runtime.Start(machine)
 	if err != nil {
 		return err
 	}
-	for _, line := range playbook.Summarize(document).Lines() {
-		fmt.Fprintln(cmd.stdout, line)
+	if err := runtime.Suspend(); err != nil {
+		return err
 	}
+	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
+	cmd.printStatusReport(report)
 	return nil
+}
+
+func (cmd command) status(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("expected no arguments, got %d", len(args))
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	report, err := runtime.Status()
+	if err != nil {
+		return err
+	}
+	if err := runtime.Suspend(); err != nil {
+		return err
+	}
+	cmd.printStatusReport(report)
+	return nil
+}
+
+func (cmd command) advance(args []string) error {
+	event, err := singleArg(args)
+	if err != nil {
+		return err
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	report, err := runtime.Advance(event)
+	if err != nil {
+		return err
+	}
+	if err := runtime.Suspend(); err != nil {
+		return err
+	}
+	if !report.Allowed {
+		fmt.Fprintf(cmd.stdout, "blocked: Advance(%s)\n", report.Event)
+		for _, failed := range report.Failed {
+			fmt.Fprintf(cmd.stdout, "  needs: %s\n", failed)
+		}
+		cmd.printChecks(report.Checks)
+		return nil
+	}
+	fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", report.From, report.To)
+	cmd.printChecks(report.Checks)
+	return nil
+}
+
+func (cmd command) stop(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("expected no arguments, got %d", len(args))
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	if err := runtime.Stop(); err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, "stopped")
+	return nil
+}
+
+func (cmd command) printStatusReport(report circuitrun.StatusReport) {
+	fmt.Fprintf(cmd.stdout, "machine: %s\n", report.MachineName)
+	fmt.Fprintf(cmd.stdout, "current: %s\n", report.Current)
+	fmt.Fprintln(cmd.stdout, "enabled:")
+	for _, call := range report.Enabled {
+		fmt.Fprintf(cmd.stdout, "  %s\n", call.Call)
+	}
+	fmt.Fprintln(cmd.stdout, "blocked:")
+	for _, call := range report.Blocked {
+		fmt.Fprintf(cmd.stdout, "  %s\n", call.Call)
+	}
+	cmd.printChecks(report.Checks)
+}
+
+func (cmd command) printChecks(checks map[string]circuitrun.CheckRuntime) {
+	if len(checks) == 0 {
+		return
+	}
+	names := make([]string, 0, len(checks))
+	for name := range checks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	fmt.Fprintln(cmd.stdout, "checks:")
+	for _, name := range names {
+		check := checks[name]
+		fmt.Fprintf(cmd.stdout, "  %s: %s (invocations: %d)\n", name, formatBool(check.LastResult), check.Invocations)
+	}
+}
+
+func formatBool(value bool) string {
+	if value {
+		return "TRUE"
+	}
+	return "FALSE"
 }
 
 func (cmd command) printUsage() {
-	fmt.Fprintln(cmd.stderr, "usage: circuit <command> <file>")
+	fmt.Fprintln(cmd.stderr, "usage: circuit <command> [args]")
 	fmt.Fprintln(cmd.stderr, "")
 	fmt.Fprintln(cmd.stderr, "commands:")
-	fmt.Fprintln(cmd.stderr, "  validate <file>  check that a playbook file is readable")
-	fmt.Fprintln(cmd.stderr, "  summary <file>   print a small playbook file summary")
+	fmt.Fprintln(cmd.stderr, "  list                  list available B machines")
+	fmt.Fprintln(cmd.stderr, "  start <machine>       start an active circuit")
+	fmt.Fprintln(cmd.stderr, "  status                print active circuit status")
+	fmt.Fprintln(cmd.stderr, "  advance <event>       apply Advance(event) to active circuit")
+	fmt.Fprintln(cmd.stderr, "  stop                  clear the active circuit")
 }
 
-func singlePath(args []string) (string, error) {
+func (cmd command) workingDir() string {
+	if cmd.cwd != "" {
+		return cmd.cwd
+	}
+	return "."
+}
+
+func singleArg(args []string) (string, error) {
 	if len(args) != 1 {
-		return "", fmt.Errorf("expected exactly one file path, got %d", len(args))
+		return "", fmt.Errorf("expected exactly one argument, got %d", len(args))
 	}
 	return args[0], nil
-}
-
-type fileInfo struct {
-	cleanPath string
-	size      int64
-}
-
-func inspectFile(path string) (fileInfo, error) {
-	cleanPath := filepath.Clean(path)
-	stat, err := os.Stat(cleanPath)
-	if err != nil {
-		return fileInfo{}, fmt.Errorf("read %s: %w", cleanPath, err)
-	}
-	if stat.IsDir() {
-		return fileInfo{}, fmt.Errorf("read %s: path is a directory", cleanPath)
-	}
-	return fileInfo{cleanPath: cleanPath, size: stat.Size()}, nil
 }
