@@ -58,6 +58,27 @@ func TestRunnerLoopRejectsBlockedFakePiResponse(t *testing.T) {
 	}
 }
 
+func TestRunnerSingleSessionOnly(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	_, _, err = runtime.Start("build-job")
+	if err != nil {
+		t.Fatalf("start 1: %v", err)
+	}
+	_, _, err = runtime.Start("build-job")
+	if err != nil {
+		t.Fatalf("start 2: %v", err)
+	}
+	_, err = runtime.Advance("start")
+	if err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
+		t.Fatalf("implicit advance with two sessions error = %v, want multiple active sessions", err)
+	}
+}
+
 func TestRunnerLoopAgainstFakePi(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)

@@ -190,6 +190,9 @@ backend.
 - The spike runner is at `cmd/circuit-rpc-spike/`, not production code.
 - This relationship is viable for headless/supervised automation but is
   not the primary interactive model.
+- The runner is intentionally single-session. Multi-session
+  orchestration is supported in pi-hosted/CLI mode, not in this
+  runner.
 
 ## ADR 10: LLM tools with full slash command parity
 
