@@ -94,7 +94,12 @@ func (predicate binaryPredicate) explain(values map[string]value, bindings map[s
 		return nil
 	}
 	if predicate.operator == "or" {
-		return []string{"no disjunct satisfied"}
+		left := predicate.left.explain(values, bindings)
+		right := predicate.right.explain(values, bindings)
+		if len(left) <= len(right) {
+			return left
+		}
+		return right
 	}
 	failed := predicate.left.explain(values, bindings)
 	failed = append(failed, predicate.right.explain(values, bindings)...)

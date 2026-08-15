@@ -326,11 +326,34 @@ func (runtime *Runtime) isTerminal(run *Run) bool {
 	if err != nil {
 		return false
 	}
-	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
-	if err != nil {
-		return false
+	variables := machine.BooleanVariables()
+	if len(variables) == 0 {
+		report, stateErr := machine.StateAtWithBooleans(run.Current, run.Booleans)
+		return stateErr == nil && len(report.Enabled) == 0
 	}
-	return len(report.Enabled) == 0
+	for _, booleans := range booleanValuations(variables, run.Booleans) {
+		report, stateErr := machine.StateAtWithBooleans(run.Current, booleans)
+		if stateErr == nil && len(report.Enabled) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func booleanValuations(variables []string, base map[string]bool) []map[string]bool {
+	count := 1 << len(variables)
+	valuations := make([]map[string]bool, 0, count)
+	for bits := range count {
+		valuation := map[string]bool{}
+		for key, value := range base {
+			valuation[key] = value
+		}
+		for index, variable := range variables {
+			valuation[variable] = bits&(1<<index) != 0
+		}
+		valuations = append(valuations, valuation)
+	}
+	return valuations
 }
 
 func (runtime *Runtime) resolveMachineFile(path string) string {

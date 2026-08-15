@@ -428,6 +428,9 @@ func TestRuntimeBlocksTDDFlowWithoutFailingTest(t *testing.T) {
 	if check.LastResult || check.Invocations != 1 {
 		t.Fatalf("failingTestObserved check = %#v, want false once", check)
 	}
+	if !runtime.IsActive() {
+		t.Fatal("externally gated tdd-flow should remain active while blocked")
+	}
 }
 
 func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
