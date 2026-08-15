@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+set -eu
+
+config=${1:-.tmp/circuit/tdd-red.env}
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+read_config_key() {
+	awk -v key="$1" '
+		BEGIN { FS = "=" }
+		$1 == key { value = substr($0, index($0, "=") + 1) }
+		END { print value }
+	' "$config"
+}
+
+[ -f "$config" ] || fail "missing TDD red evidence file: $config"
+
+package=$(read_config_key TDD_PACKAGE)
+run_pattern=$(read_config_key TDD_RUN)
+expected_fail=$(read_config_key TDD_EXPECTED_FAIL)
+
+[ -n "$package" ] || fail "TDD_PACKAGE is required in $config"
+[ -n "$run_pattern" ] || fail "TDD_RUN is required in $config"
+[ -n "$expected_fail" ] || fail "TDD_EXPECTED_FAIL is required in $config"
+
+case "$package" in
+	./* | github.com/punt-labs/circuit/*) ;;
+	*) fail "TDD_PACKAGE must be repo-local: $package" ;;
+esac
+
+case "$run_pattern" in
+	*[!A-Za-z0-9_./^$-]*) fail "TDD_RUN contains unsupported characters: $run_pattern" ;;
+esac
+
+case "$expected_fail" in
+	*[!A-Za-z0-9_./-]*) fail "TDD_EXPECTED_FAIL contains unsupported characters: $expected_fail" ;;
+esac
+
+set +e
+output=$(go test "$package" -run "$run_pattern" -count=1 2>&1)
+status=$?
+set -e
+
+if [ "$status" -eq 0 ]; then
+	printf '%s\n' "$output" >&2
+	fail "expected red test failed to fail: $expected_fail"
+fi
+
+printf '%s\n' "$output" | grep -F -- "--- FAIL: $expected_fail" >/dev/null || {
+	printf '%s\n' "$output" >&2
+	fail "go test failed, but not because expected test failed: $expected_fail"
+}
+
+printf '%s\n' "observed expected failing test: $expected_fail"

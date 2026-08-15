@@ -9,7 +9,7 @@ checks:
     returns: BOOL
   failingTestObserved:
     kind: command
-    command: "false"
+    command: .bin/circuit-check-tdd-red
     returns: BOOL
   testSuitePassed:
     kind: command

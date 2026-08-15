@@ -126,6 +126,28 @@ func TestReviewFlowStateUsesBooleanFacts(t *testing.T) {
 	}
 }
 
+func TestTDDFlowImplementBlockedWithoutSuite(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
+	if err != nil {
+		t.Fatalf("load tdd-flow: %v", err)
+	}
+
+	// implement requires testSuitePassed = TRUE
+	// This test will fail until we verify the blocking diagnostic message
+	// includes the variable name.
+	result, err := machine.AdvanceFromWithBooleans("implement", "red", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
+	if err != nil {
+		t.Fatalf("advance implement: %v", err)
+	}
+	if result.Allowed {
+		t.Fatal("implement allowed without passing test suite")
+	}
+	if len(result.Failed) == 0 || !strings.Contains(result.Failed[0], "testSuitePassed") {
+		t.Fatalf("blocked diagnostics = %v, want testSuitePassed mention", result.Failed)
+	}
+}
+
 func TestTDDFlowBooleanPreconditions(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
