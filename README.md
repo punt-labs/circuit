@@ -171,8 +171,10 @@ booleans and bound to registered checks outside B. For example,
 `makeCheck` registry entry in `check-registry.yaml`. `tdd-flow.mch` uses the
 same pattern for red-green-refactor discipline: `writeTest` requires
 `failingTestObserved = TRUE`, while `implement`, `keepGreen`, and `finish`
-require `testSuitePassed = TRUE`. A machine with BOOL facts must load with
-complete bindings before it can start. Use `circuit scaffold <machine>` to
+require `testSuitePassed = TRUE`. The local `failingTestObserved` check reads
+session-scoped red evidence from `.tmp/circuit/<session-id>/tdd-red.env` so
+multiple TDD sessions can run independently. A machine with BOOL facts must load
+with complete bindings before it can start. Use `circuit scaffold <machine>` to
 generate missing bindings and registry stubs; stubs default to `false`, so
 incomplete integrations block safely.
 

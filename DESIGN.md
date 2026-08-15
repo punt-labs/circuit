@@ -87,6 +87,10 @@ covered by Go runtime and CLI tests.
   stubs default to `false` so incomplete integrations block safely.
 - Checks run before advance and their results (boolean + invocation
   count) are persisted in the session.
+- Check commands receive session-scoped environment variables such as
+  `CIRCUIT_SESSION_ID`, `CIRCUIT_MACHINE_NAME`, `CIRCUIT_MACHINE_FILE`, and
+  `CIRCUIT_CURRENT_STATE` so project-local evidence can stay isolated per
+  concurrent machine session.
 
 ## ADR 5: Session lifecycle
 

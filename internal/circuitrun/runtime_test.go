@@ -433,6 +433,45 @@ func TestRuntimeBlocksTDDFlowWithoutFailingTest(t *testing.T) {
 	}
 }
 
+func TestRuntimePassesSessionEnvironmentToChecks(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/tdd-red.env", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	sessionID, _, err := runtime.Start("tdd-flow")
+	if err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+
+	// Without session-scoped evidence: blocked.
+	blocked, err := runtime.Advance("writeTest")
+	if err != nil {
+		t.Fatalf("advance without session evidence: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("advance allowed without session-scoped evidence")
+	}
+
+	// With session-scoped evidence: allowed.
+	sessionPath := filepath.Join(root, ".tmp", "circuit", sessionID, "tdd-red.env")
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o700); err != nil {
+		t.Fatalf("create session evidence dir: %v", err)
+	}
+	if err := os.WriteFile(sessionPath, []byte("session evidence"), 0o600); err != nil {
+		t.Fatalf("write session evidence: %v", err)
+	}
+	allowed, err := runtime.Advance("writeTest")
+	if err != nil {
+		t.Fatalf("advance with session evidence: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "red" {
+		t.Fatalf("advance with session evidence = %#v, want red", allowed)
+	}
+}
+
 func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
