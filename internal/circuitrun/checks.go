@@ -44,7 +44,7 @@ func (runtime *Runtime) runChecks(run *Run) error {
 		if registered.Kind != "command" || registered.Returns != "BOOL" {
 			return fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
-		passed := runtime.runBooleanCommand(registered.Command)
+		passed := runtime.runBooleanCommand(registered.Command, run)
 		run.Booleans[variable] = passed
 		check := run.Checks[variable]
 		check.Invocations++
@@ -54,9 +54,15 @@ func (runtime *Runtime) runChecks(run *Run) error {
 	return nil
 }
 
-func (runtime *Runtime) runBooleanCommand(command string) bool {
+func (runtime *Runtime) runBooleanCommand(command string, run *Run) bool {
 	result := exec.Command("sh", "-c", command)
 	result.Dir = runtime.root
+	result.Env = append(os.Environ(),
+		"CIRCUIT_SESSION_ID="+run.SessionID,
+		"CIRCUIT_MACHINE_NAME="+run.MachineName,
+		"CIRCUIT_MACHINE_FILE="+run.MachineFile,
+		"CIRCUIT_CURRENT_STATE="+run.Current,
+	)
 	return result.Run() == nil
 }
 

@@ -295,6 +295,33 @@ func TestReviewFlowBlocksWhenBoundCheckFails(t *testing.T) {
 	}
 }
 
+func TestPRWatchAdvancesToDone(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "pr-watch"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "current: watch") {
+		t.Fatalf("start output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "needsWork"}); err != nil {
+		t.Fatalf("advance needsWork returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: watch -> fixing") {
+		t.Fatalf("advance needsWork output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "fixed"}); err != nil {
+		t.Fatalf("advance fixed returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: fixing -> done") {
+		t.Fatalf("advance fixed output mismatch: %q", stdout.String())
+	}
+}
+
 func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -321,6 +348,52 @@ func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "advanced: waiting -> done") {
 		t.Fatalf("advance 2 not allowed: %q", stdout.String())
+	}
+}
+
+func TestTDDFlowRequiresSessionScopedEvidenceThenAdvancesToDone(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/tdd-red.env", "true")
+
+	if err := cmd.run([]string{"start", "tdd-flow"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "writeTest"}); err != nil {
+		t.Fatalf("advance without evidence returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "blocked: Advance(writeTest)") {
+		t.Fatalf("advance without evidence output mismatch: %q", stdout.String())
+	}
+
+	evidencePath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "tdd-red.env")
+	if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
+		t.Fatalf("create evidence dir: %v", err)
+	}
+	if err := os.WriteFile(evidencePath, []byte("session red evidence"), 0o600); err != nil {
+		t.Fatalf("write evidence: %v", err)
+	}
+
+	for _, step := range []struct {
+		event string
+		want  string
+	}{
+		{event: "writeTest", want: "advanced: spec -> red"},
+		{event: "implement", want: "advanced: red -> green"},
+		{event: "refactor", want: "advanced: green -> refactoring"},
+		{event: "keepGreen", want: "advanced: refactoring -> green"},
+		{event: "finish", want: "advanced: green -> done"},
+	} {
+		stdout.Reset()
+		if err := cmd.run([]string{"advance", step.event}); err != nil {
+			t.Fatalf("advance %s returned error: %v", step.event, err)
+		}
+		if !strings.Contains(stdout.String(), step.want) {
+			t.Fatalf("advance %s output = %q, want %q", step.event, stdout.String(), step.want)
+		}
 	}
 }
 
@@ -556,6 +629,15 @@ func writeRegistry(t *testing.T, root string, command string) {
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func writeTDDRegistry(t *testing.T, root string, failingTestCommand string, testSuiteCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  failingTestObserved:\n    kind: command\n    command: " + failingTestCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
 	}
 }
 
