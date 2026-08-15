@@ -247,8 +247,8 @@ func TestRuntimeListsMachinesAndReportsSuspendedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list machines: %v", err)
 	}
-	if len(machines) != 3 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" {
-		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow", machines)
+	if len(machines) != 4 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" || machines[3] != "tdd-flow" {
+		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow/tdd-flow", machines)
 	}
 	if runtime.SuspendedPath() != filepath.Join(root, ".tmp", "circuit.suspended.json") {
 		t.Fatalf("suspended path = %s", runtime.SuspendedPath())
@@ -405,6 +405,66 @@ func TestRuntimeRetryAfterBlockedCheck(t *testing.T) {
 	}
 }
 
+func TestRuntimeBlocksTDDFlowWithoutFailingTest(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "false", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("tdd-flow"); err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+
+	report, err := runtime.Advance("writeTest")
+	if err != nil {
+		t.Fatalf("advance writeTest: %v", err)
+	}
+	if report.Allowed {
+		t.Fatalf("writeTest unexpectedly allowed: %#v", report)
+	}
+	check := report.Checks["failingTestObserved"]
+	if check.LastResult || check.Invocations != 1 {
+		t.Fatalf("failingTestObserved check = %#v, want false once", check)
+	}
+}
+
+func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "true", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("tdd-flow"); err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+
+	for _, step := range []struct {
+		event string
+		to    string
+	}{
+		{event: "writeTest", to: "red"},
+		{event: "implement", to: "green"},
+		{event: "refactor", to: "refactoring"},
+		{event: "keepGreen", to: "green"},
+		{event: "finish", to: "done"},
+	} {
+		report, advanceErr := runtime.Advance(step.event)
+		if advanceErr != nil {
+			t.Fatalf("advance %s: %v", step.event, advanceErr)
+		}
+		if !report.Allowed || report.To != step.to {
+			t.Fatalf("advance %s = %#v, want %s", step.event, report, step.to)
+		}
+	}
+	if runtime.IsActive() {
+		t.Fatal("tdd-flow should auto-stop at done")
+	}
+}
+
 func testRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -412,7 +472,7 @@ func testRoot(t *testing.T) string {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyFixture(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return root
@@ -438,6 +498,18 @@ func writeRegistry(t *testing.T, root string, command string) {
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func writeTDDRegistry(t *testing.T, root string, failingTestCommand string, testSuiteCommand string) {
+	t.Helper()
+	if strings.TrimSpace(failingTestCommand) == "" || strings.TrimSpace(testSuiteCommand) == "" {
+		t.Fatal("commands must not be empty")
+	}
+	content := []byte("checks:\n  failingTestObserved:\n    kind: command\n    command: " + failingTestCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
 	}
 }
 

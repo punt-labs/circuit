@@ -19,7 +19,7 @@ func TestBMachineList(t *testing.T) {
 		t.Fatalf("list returned error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "build-job") || !strings.Contains(output, "pr-watch") {
+	if !strings.Contains(output, "build-job") || !strings.Contains(output, "pr-watch") || !strings.Contains(output, "tdd-flow") {
 		t.Fatalf("list output mismatch: %q", output)
 	}
 }
@@ -522,7 +522,7 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}

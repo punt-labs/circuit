@@ -126,6 +126,38 @@ func TestReviewFlowStateUsesBooleanFacts(t *testing.T) {
 	}
 }
 
+func TestTDDFlowBooleanPreconditions(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
+	if err != nil {
+		t.Fatalf("load tdd-flow: %v", err)
+	}
+
+	blocked, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"failingTestObserved": false, "testSuitePassed": false})
+	if err != nil {
+		t.Fatalf("advance writeTest with false failing test: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("writeTest allowed before failing test observed")
+	}
+
+	allowed, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
+	if err != nil {
+		t.Fatalf("advance writeTest with true failing test: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "red" {
+		t.Fatalf("writeTest with failing test = %#v, want red", allowed)
+	}
+
+	blockedFinish, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
+	if err != nil {
+		t.Fatalf("advance finish with false suite: %v", err)
+	}
+	if blockedFinish.Allowed {
+		t.Fatal("finish allowed before test suite passed")
+	}
+}
+
 func TestLoadRejectsUnsupportedAny(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "Unsupported.mch")

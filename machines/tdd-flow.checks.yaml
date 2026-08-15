@@ -1,0 +1,5 @@
+checks:
+  failingTestObserved:
+    use: failingTestObserved
+  testSuitePassed:
+    use: testSuitePassed
