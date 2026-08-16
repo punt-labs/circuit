@@ -679,6 +679,32 @@ func (backend *stubBackend) Prompt(message string) (string, error) {
 	return response, nil
 }
 
+func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+	guidance, err := cmd.loadGuidance("tdd-flow", "Add load --json")
+	if err != nil {
+		t.Fatalf("load guidance: %v", err)
+	}
+	if guidance.Goal != "Add load --json" {
+		t.Fatalf("goal = %q, want task", guidance.Goal)
+	}
+	for state, want := range map[string]string{
+		"spec":        "Write the failing test",
+		"red":         "Implement the smallest code",
+		"green":       "finish or request refactor",
+		"refactoring": "Refactor while keeping checks green",
+	} {
+		prompt := guidance.States[state].Prompt
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("%s prompt = %q, want %q", state, prompt, want)
+		}
+	}
+	if guidance.States["spec"].Event != "writeTest" {
+		t.Fatalf("spec event = %q, want writeTest", guidance.States["spec"].Event)
+	}
+}
+
 func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -740,7 +766,7 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "build-job.prompts.yaml", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "tdd-flow.prompts.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}

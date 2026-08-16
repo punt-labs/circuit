@@ -26,6 +26,10 @@ def main() -> int:
         machines_dst = workdir / "machines"
         machines_dst.mkdir(parents=True, exist_ok=True)
         shutil.copy(machines_src / "build-job.mch", machines_dst / "build-job.mch")
+        shutil.copy(
+            machines_src / "build-job.prompts.yaml",
+            machines_dst / "build-job.prompts.yaml",
+        )
 
         binary = workdir / "circuit"
         build = subprocess.run(

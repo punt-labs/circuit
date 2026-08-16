@@ -1,0 +1,21 @@
+states:
+  spec:
+    prompt: >
+      Write the failing test for the task. Do not implement production code.
+      When the targeted test is failing, request the transition event.
+    event: writeTest
+  red:
+    prompt: >
+      Implement the smallest code change that makes the failing test pass. Do
+      not refactor or broaden scope. When the full check passes, request the
+      transition event.
+    event: implement
+  green:
+    prompt: >
+      The slice is green. If it is complete, request finish or request refactor
+      if cleanup is needed.
+  refactoring:
+    prompt: >
+      Refactor while keeping checks green. When the full check passes, request
+      the transition event.
+    event: keepGreen

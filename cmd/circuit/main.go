@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrpc"
 	"github.com/punt-labs/circuit/internal/circuitrun"
+	"gopkg.in/yaml.v3"
 )
 
 const exitUsage = 2
@@ -175,7 +177,10 @@ func (cmd command) drive(args []string) error {
 	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
-	guidance := defaultGuidanceForMachine(machine, task)
+	guidance, err := cmd.loadGuidance(machine, task)
+	if err != nil {
+		return err
+	}
 	result, err := circuitrpc.RunGuidedSession(runtime, backend, guidance)
 	for _, transition := range result.Transitions {
 		if transition.Allowed {
@@ -240,18 +245,21 @@ func launchPiBackend(cwd string) (circuitrpc.AgentBackend, func(), error) {
 	return backend, cleanup, nil
 }
 
-func defaultGuidanceForMachine(machine string, task string) circuitrpc.DriverGuidance {
-	switch machine {
-	case "build-job":
-		return circuitrpc.DriverGuidance{
-			Goal: task,
-			States: map[string]circuitrpc.StateGuidance{
-				"idle":    {Prompt: "You are idle. Respond with the transition event name.", Event: "start"},
-				"running": {Prompt: "You are running. Respond with the transition event name.", Event: "finish"},
-			},
-		}
+type guidanceFile struct {
+	States map[string]circuitrpc.StateGuidance `yaml:"states"`
+}
+
+func (cmd command) loadGuidance(machine string, task string) (circuitrpc.DriverGuidance, error) {
+	path := filepath.Join(cmd.workingDir(), "machines", machine+".prompts.yaml")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return circuitrpc.DriverGuidance{}, err
 	}
-	return circuitrpc.DriverGuidance{Goal: task}
+	var file guidanceFile
+	if err := yaml.Unmarshal(content, &file); err != nil {
+		return circuitrpc.DriverGuidance{}, err
+	}
+	return circuitrpc.DriverGuidance{Goal: task, States: file.States}, nil
 }
 
 func (cmd command) status(args []string) error {
