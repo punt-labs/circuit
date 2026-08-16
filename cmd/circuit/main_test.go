@@ -710,6 +710,14 @@ func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
 	}
 }
 
+func TestSmokeDriveScriptExists(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join("..", "..", "tests", "smoke", "circuit_drive_smoke.py")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected smoke script %s: %v", path, err)
+	}
+}
+
 func TestUnknownCommandFails(t *testing.T) {
 	t.Parallel()
 	stderr := &bytes.Buffer{}

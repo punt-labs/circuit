@@ -98,6 +98,9 @@ check-docs: ## Lint markdown
 smoke-pi: ## Run pi RPC smoke test (requires pi + model API key)
 	python3 tests/smoke/pi_rpc_smoke.py
 
+smoke-drive: ## Run circuit-drives-pi smoke test (requires pi + model API key)
+	python3 tests/smoke/circuit_drive_smoke.py
+
 tools: ## Install development tools
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 

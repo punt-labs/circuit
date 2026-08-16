@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"sort"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
@@ -151,8 +153,17 @@ func (cmd command) drive(args []string) error {
 		return err
 	}
 	backend := cmd.backend
+	var stopBackend func()
 	if backend == nil {
-		return errors.New("drive requires an agent backend; real pi backend is not wired yet")
+		real, cleanup, launchErr := launchPiBackend(cmd.workingDir())
+		if launchErr != nil {
+			return launchErr
+		}
+		backend = real
+		stopBackend = cleanup
+	}
+	if stopBackend != nil {
+		defer stopBackend()
 	}
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
@@ -203,6 +214,30 @@ func parseDriveArgs(args []string) (machine string, task string, err error) {
 		return "", "", errors.New("drive requires a machine name")
 	}
 	return machine, task, nil
+}
+
+func launchPiBackend(cwd string) (circuitrpc.AgentBackend, func(), error) {
+	process := exec.Command("pi", "--mode", "rpc", "--no-session", "--approve")
+	process.Dir = cwd
+	process.Stderr = os.Stderr
+	stdin, err := process.StdinPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	stdout, err := process.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := process.Start(); err != nil {
+		return nil, nil, err
+	}
+	backend := circuitrpc.NewPiRPCBackend(stdin, bufio.NewReader(stdout))
+	cleanup := func() {
+		_ = stdin.Close()
+		_ = process.Process.Signal(os.Interrupt)
+		_ = process.Wait()
+	}
+	return backend, cleanup, nil
 }
 
 func defaultGuidanceForMachine(machine string, task string) circuitrpc.DriverGuidance {
