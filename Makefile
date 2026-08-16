@@ -26,8 +26,8 @@ check: format check-engine check-rpc check-pi-extension check-docs ## Run all qu
 
 check-engine: lint-engine test-engine ## Validate Go engine
 
-check-go-quality: ## Placeholder Go quality gate for tdd-flow codeQualityPassed
-	@true
+check-go-quality: ## Check Go duplication, cognitive complexity, and function length
+	$(GOLANGCI_LINT) run --enable-only=dupl,gocognit,funlen --tests=false ./...
 
 check-rpc: test-rpc ## Validate RPC protocol logic
 

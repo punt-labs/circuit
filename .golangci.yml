@@ -21,6 +21,9 @@ linters:
         - -ST1021
         - -ST1022
         - -QF*
+    funlen:
+      lines: 80
+      statements: 60
 
 formatters:
   enable:
