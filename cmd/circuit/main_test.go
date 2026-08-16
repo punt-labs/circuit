@@ -39,6 +39,30 @@ func TestBMachineLoadValidatesChecks(t *testing.T) {
 	}
 }
 
+func TestBMachineLoadJSONReportsCheckBindings(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"load", "--json", "review-flow"}); err != nil {
+		t.Fatalf("load --json returned error: %v", err)
+	}
+	var report loadJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("load --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Machine != "review-flow" {
+		t.Fatalf("machine = %q, want review-flow", report.Machine)
+	}
+	if len(report.Checks) != 1 {
+		t.Fatalf("checks = %#v, want one check binding", report.Checks)
+	}
+	check := report.Checks[0]
+	if check.Variable != "makeCheckPassed" || check.Use != "makeCheck" || check.Returns != "BOOL" {
+		t.Fatalf("check binding = %#v, want makeCheckPassed -> makeCheck: BOOL", check)
+	}
+}
+
 func TestBMachineScaffoldGeneratesFailingCheckStubs(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -808,6 +832,17 @@ type advanceJSONTest struct {
 	From    string   `json:"from"`
 	To      string   `json:"to"`
 	Failed  []string `json:"failed"`
+}
+
+type loadJSONTest struct {
+	Machine string                 `json:"machine"`
+	Checks  []checkBindingJSONTest `json:"checks"`
+}
+
+type checkBindingJSONTest struct {
+	Variable string `json:"variable"`
+	Use      string `json:"use"`
+	Returns  string `json:"returns"`
 }
 
 type statusJSONTest struct {

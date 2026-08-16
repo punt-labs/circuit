@@ -88,7 +88,7 @@ func (cmd command) listMachines(args []string) error {
 }
 
 func (cmd command) load(args []string) error {
-	machine, err := singleArg(args)
+	jsonMode, machine, err := parseLoadArgs(args)
 	if err != nil {
 		return err
 	}
@@ -100,9 +100,30 @@ func (cmd command) load(args []string) error {
 	if err != nil {
 		return err
 	}
+	if jsonMode {
+		return cmd.writeLoadJSON(report)
+	}
 	fmt.Fprintf(cmd.stdout, "loaded: %s\n", report.MachineName)
 	cmd.printCheckBindings(report.Checks)
 	return nil
+}
+
+func parseLoadArgs(args []string) (jsonMode bool, machine string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if machine != "" {
+				return false, "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			machine = arg
+		}
+	}
+	if machine == "" {
+		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
+	}
+	return jsonMode, machine, nil
 }
 
 func (cmd command) scaffold(args []string) error {
@@ -375,6 +396,11 @@ func parseStatusArgs(args []string) (jsonMode bool, session string, err error) {
 	return jsonMode, session, nil
 }
 
+type loadJSONEntry struct {
+	Machine string                          `json:"machine"`
+	Checks  []circuitrun.CheckBindingReport `json:"checks"`
+}
+
 type advanceJSONEntry struct {
 	Session string               `json:"session,omitempty"`
 	Allowed bool                 `json:"allowed"`
@@ -403,6 +429,15 @@ type callStatusJSON struct {
 type checkJSON struct {
 	Result      bool `json:"result"`
 	Invocations int  `json:"invocations"`
+}
+
+func (cmd command) writeLoadJSON(report circuitrun.LoadReport) error {
+	output, err := json.MarshalIndent(loadJSONEntry{Machine: report.MachineName, Checks: report.Checks}, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, string(output))
+	return nil
 }
 
 func (cmd command) writeAdvanceJSON(report circuitrun.AdvanceReport) error {
@@ -628,7 +663,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "")
 	fmt.Fprintln(cmd.stderr, "commands:")
 	fmt.Fprintln(cmd.stderr, "  list                        list available B machines")
-	fmt.Fprintln(cmd.stderr, "  load <machine>              validate machine and check bindings")
+	fmt.Fprintln(cmd.stderr, "  load [--json] <machine>     validate machine and check bindings")
 	fmt.Fprintln(cmd.stderr, "  scaffold <machine>          generate missing check bindings and false stubs")
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")

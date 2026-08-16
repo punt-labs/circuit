@@ -59,9 +59,9 @@ type LoadReport struct {
 }
 
 type CheckBindingReport struct {
-	Variable string
-	Use      string
-	Returns  string
+	Variable string `json:"variable"`
+	Use      string `json:"use"`
+	Returns  string `json:"returns"`
 }
 
 type ScaffoldReport struct {
