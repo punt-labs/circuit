@@ -9,15 +9,17 @@ import (
 	"sort"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
+	"github.com/punt-labs/circuit/internal/circuitrpc"
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
 
 const exitUsage = 2
 
 type command struct {
-	stdout io.Writer
-	stderr io.Writer
-	cwd    string
+	stdout  io.Writer
+	stderr  io.Writer
+	cwd     string
+	backend circuitrpc.AgentBackend
 }
 
 func main() {
@@ -54,6 +56,8 @@ func (cmd command) run(args []string) error {
 		return cmd.stop(args[1:])
 	case "unload":
 		return cmd.unload(args[1:])
+	case "drive":
+		return cmd.drive(args[1:])
 	default:
 		cmd.printUsage()
 		return fmt.Errorf("unknown command: %s", args[0])
@@ -139,6 +143,80 @@ func (cmd command) start(args []string) error {
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
 	cmd.printStatusReport(report)
 	return nil
+}
+
+func (cmd command) drive(args []string) error {
+	machine, task, err := parseDriveArgs(args)
+	if err != nil {
+		return err
+	}
+	backend := cmd.backend
+	if backend == nil {
+		return errors.New("drive requires an agent backend; real pi backend is not wired yet")
+	}
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	id, report, err := runtime.Start(machine)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
+	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	guidance := defaultGuidanceForMachine(machine, task)
+	result, err := circuitrpc.RunGuidedSession(runtime, backend, guidance)
+	for _, transition := range result.Transitions {
+		if transition.Allowed {
+			fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", transition.From, transition.To)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	status, err := runtime.StatusByID(id)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.stdout, "terminal: %s\n", status.Current)
+	return runtime.Suspend()
+}
+
+func parseDriveArgs(args []string) (machine string, task string, err error) {
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch arg {
+		case "--task":
+			if index+1 >= len(args) {
+				return "", "", errors.New("--task requires a value")
+			}
+			task = args[index+1]
+			index++
+		default:
+			if machine != "" {
+				return "", "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			machine = arg
+		}
+	}
+	if machine == "" {
+		return "", "", errors.New("drive requires a machine name")
+	}
+	return machine, task, nil
+}
+
+func defaultGuidanceForMachine(machine string, task string) circuitrpc.DriverGuidance {
+	switch machine {
+	case "build-job":
+		return circuitrpc.DriverGuidance{
+			Goal: task,
+			States: map[string]circuitrpc.StateGuidance{
+				"idle":    {Prompt: "You are idle. Respond with the transition event name.", Event: "start"},
+				"running": {Prompt: "You are running. Respond with the transition event name.", Event: "finish"},
+			},
+		}
+	}
+	return circuitrpc.DriverGuidance{Goal: task}
 }
 
 func (cmd command) status(args []string) error {
@@ -452,6 +530,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "                              apply Advance(event) to a circuit session")
 	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
 	fmt.Fprintln(cmd.stderr, "  unload <session>            remove a stopped circuit session")
+	fmt.Fprintln(cmd.stderr, "  drive <machine> [--task s]  run a machine end-to-end against an agent backend")
 }
 
 func (cmd command) workingDir() string {

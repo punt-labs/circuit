@@ -664,6 +664,52 @@ func TestStopRejectsTooManyArgs(t *testing.T) {
 	}
 }
 
+type stubBackend struct {
+	responses []string
+	prompts   []string
+}
+
+func (backend *stubBackend) Prompt(message string) (string, error) {
+	backend.prompts = append(backend.prompts, message)
+	if len(backend.responses) == 0 {
+		return "", nil
+	}
+	response := backend.responses[0]
+	backend.responses = backend.responses[1:]
+	return response, nil
+}
+
+func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	backend := &stubBackend{responses: []string{"start", "finish"}}
+	cmd.backend = backend
+
+	if err := cmd.run([]string{"drive", "build-job", "--task", "Drive build-job to done."}); err != nil {
+		t.Fatalf("drive returned error: %v", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"started: build-job",
+		"advanced: idle -> running",
+		"advanced: running -> done",
+		"terminal: done",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("drive output missing %q:\n%s", want, output)
+		}
+	}
+	if len(backend.prompts) != 2 {
+		t.Fatalf("backend prompts = %d, want 2", len(backend.prompts))
+	}
+	for _, want := range []string{"Drive build-job to done.", "Current state: idle"} {
+		if !strings.Contains(backend.prompts[0], want) {
+			t.Fatalf("prompt 0 missing %q:\n%s", want, backend.prompts[0])
+		}
+	}
+}
+
 func TestUnknownCommandFails(t *testing.T) {
 	t.Parallel()
 	stderr := &bytes.Buffer{}
