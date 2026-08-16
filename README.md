@@ -170,12 +170,14 @@ booleans and bound to registered checks outside B. For example,
 `coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
 `makeCheck` registry entry in `check-registry.yaml`. `tdd-flow.mch` uses the
 same pattern for red-green-refactor discipline: `writeTest` requires
-`not(testSuitePassed = TRUE)` while `implement`, `keepGreen`, and `finish`
-require `testSuitePassed = TRUE`. Circuit-B supports `not(...)` for exactly this
-kind of negated gate, so no separate "failing test observed" fact is needed. A
-machine with BOOL facts must load with complete bindings before it can start.
-Use `circuit scaffold <machine>` to generate missing bindings and registry
-stubs; stubs default to `false`, so incomplete integrations block safely.
+`not(testSuitePassed = TRUE)` while `implement`, `reviewQuality`, and
+`keepGreen` require `testSuitePassed = TRUE`. `finish` requires a separate
+`codeQualityPassed = TRUE`, and `refactor` is available from `qualityReview`
+when code quality is not passing. Circuit-B supports `not(...)` for these
+negated gates, so no separate "failing test observed" fact is needed. A machine
+with BOOL facts must load with complete bindings before it can start. Use
+`circuit scaffold <machine>` to generate missing bindings and registry stubs;
+stubs default to `false`, so incomplete integrations block safely.
 
 Circuit manages multiple sessions. A session is one running instance of a
 machine, identified as `<machine>-<4hex>` such as `build-job-a3f8`. Each session

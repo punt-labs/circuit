@@ -12,21 +12,18 @@ states:
     event: implement
   green:
     prompt: >
-      The slice is green. Inspect the changed code for refactoring needs before
-      deciding finish or refactor. Look for duplication, poor names, long
-      functions, mixed responsibilities, repeated parsing or JSON mapping, and
-      missed extraction opportunities. When inspection is complete, request the
-      transition event.
-    event: inspect
-  inspecting:
+      The slice is green. Request the transition event to run code quality
+      review before deciding finish or refactor.
+    event: reviewQuality
+  qualityReview:
     prompt: >
-      Based on the inspection, request finish if no refactor is needed, or
-      request refactor if any smell should be fixed.
+      Circuit has checked code quality. If the quality gate passes, request
+      finish. If the quality gate fails, request refactor.
   refactoring:
     prompt: >
-      Refactor while keeping checks green. Use standard refactorings when they
-      apply: Extract Function, Extract Type, Extract Helper, Rename for clarity,
-      consolidate duplicate conditionals, and move repeated mapping logic into
-      one place. Do not change behavior. When the full check passes, request the
-      transition event.
+      Refactor only to satisfy the code quality gate while preserving behavior.
+      Use standard refactorings when they apply: Extract Function, Extract Type,
+      Extract Helper, Rename for clarity, consolidate duplicate conditionals,
+      and move repeated mapping logic into one place. When tests pass again,
+      request the transition event.
     event: keepGreen

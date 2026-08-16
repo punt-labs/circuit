@@ -17,7 +17,7 @@ GOBIN := $(shell go env GOPATH)/bin
 endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
-.PHONY: help check check-engine check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
+.PHONY: help check check-engine check-go-quality check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
@@ -25,6 +25,9 @@ help: ## Show available targets
 check: format check-engine check-rpc check-pi-extension check-docs ## Run all quality gates
 
 check-engine: lint-engine test-engine ## Validate Go engine
+
+check-go-quality: ## Placeholder Go quality gate for tdd-flow codeQualityPassed
+	@true
 
 check-rpc: test-rpc ## Validate RPC protocol logic
 

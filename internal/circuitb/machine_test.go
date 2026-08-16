@@ -152,8 +152,8 @@ func TestTDDFlowUsesTestSuitePassedNegation(t *testing.T) {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	if variables := machine.BooleanVariables(); len(variables) != 1 || variables[0] != "testSuitePassed" {
-		t.Fatalf("BooleanVariables = %v, want [testSuitePassed]", variables)
+	if variables := machine.BooleanVariables(); len(variables) != 2 || variables[0] != "codeQualityPassed" || variables[1] != "testSuitePassed" {
+		t.Fatalf("BooleanVariables = %v, want [codeQualityPassed testSuitePassed]", variables)
 	}
 
 	blocked, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"testSuitePassed": true})
@@ -226,59 +226,79 @@ END
 	}
 }
 
-func TestTDDFlowRequiresInspectBeforeFinish(t *testing.T) {
+func TestTDDFlowQualityReviewDrivesRefactoring(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
 	if err != nil {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
-	if err != nil {
-		t.Fatalf("advance finish from green: %v", err)
-	}
-	if blocked.Allowed {
-		t.Fatal("finish allowed from green before inspect")
+	if variables := machine.BooleanVariables(); len(variables) != 2 || variables[0] != "codeQualityPassed" || variables[1] != "testSuitePassed" {
+		t.Fatalf("BooleanVariables = %v, want [codeQualityPassed testSuitePassed]", variables)
 	}
 
-	inspected, err := machine.AdvanceFromWithBooleans("inspect", "green", map[string]bool{"testSuitePassed": true})
+	review, err := machine.AdvanceFromWithBooleans("reviewQuality", "green", map[string]bool{"testSuitePassed": true, "codeQualityPassed": false})
 	if err != nil {
-		t.Fatalf("advance inspect from green: %v", err)
+		t.Fatalf("advance reviewQuality: %v", err)
 	}
-	if !inspected.Allowed || inspected.To != "inspecting" {
-		t.Fatalf("inspect from green = %#v, want inspecting", inspected)
+	if !review.Allowed || review.To != "qualityReview" {
+		t.Fatalf("reviewQuality = %#v, want qualityReview", review)
 	}
 
-	finished, err := machine.AdvanceFromWithBooleans("finish", "inspecting", map[string]bool{"testSuitePassed": true})
+	blockedFinish, err := machine.AdvanceFromWithBooleans("finish", "qualityReview", map[string]bool{"testSuitePassed": true, "codeQualityPassed": false})
 	if err != nil {
-		t.Fatalf("advance finish from inspecting: %v", err)
+		t.Fatalf("advance finish with failed quality: %v", err)
+	}
+	if blockedFinish.Allowed {
+		t.Fatal("finish allowed when code quality failed")
+	}
+
+	refactor, err := machine.AdvanceFromWithBooleans("refactor", "qualityReview", map[string]bool{"testSuitePassed": true, "codeQualityPassed": false})
+	if err != nil {
+		t.Fatalf("advance refactor with failed quality: %v", err)
+	}
+	if !refactor.Allowed || refactor.To != "refactoring" {
+		t.Fatalf("refactor = %#v, want refactoring", refactor)
+	}
+
+	finished, err := machine.AdvanceFromWithBooleans("finish", "qualityReview", map[string]bool{"testSuitePassed": true, "codeQualityPassed": true})
+	if err != nil {
+		t.Fatalf("advance finish with passed quality: %v", err)
 	}
 	if !finished.Allowed || finished.To != "done" {
-		t.Fatalf("finish from inspecting = %#v, want done", finished)
+		t.Fatalf("finish = %#v, want done", finished)
 	}
 }
 
-func TestTDDFlowFinishAllowedAfterInspect(t *testing.T) {
+func TestTDDFlowRequiresQualityReviewBeforeFinish(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
 	if err != nil {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
+	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true, "codeQualityPassed": true})
 	if err != nil {
 		t.Fatalf("advance finish from green: %v", err)
 	}
 	if blocked.Allowed {
-		t.Fatal("finish allowed before inspect")
+		t.Fatal("finish allowed from green before quality review")
 	}
 
-	allowed, err := machine.AdvanceFromWithBooleans("finish", "inspecting", map[string]bool{"testSuitePassed": true})
+	reviewed, err := machine.AdvanceFromWithBooleans("reviewQuality", "green", map[string]bool{"testSuitePassed": true, "codeQualityPassed": true})
 	if err != nil {
-		t.Fatalf("advance finish after inspect: %v", err)
+		t.Fatalf("advance reviewQuality from green: %v", err)
 	}
-	if !allowed.Allowed || allowed.To != "done" {
-		t.Fatalf("finish with passing suite = %#v, want done", allowed)
+	if !reviewed.Allowed || reviewed.To != "qualityReview" {
+		t.Fatalf("reviewQuality from green = %#v, want qualityReview", reviewed)
+	}
+
+	finished, err := machine.AdvanceFromWithBooleans("finish", "qualityReview", map[string]bool{"testSuitePassed": true, "codeQualityPassed": true})
+	if err != nil {
+		t.Fatalf("advance finish from qualityReview: %v", err)
+	}
+	if !finished.Allowed || finished.To != "done" {
+		t.Fatalf("finish from qualityReview = %#v, want done", finished)
 	}
 }
 

@@ -511,7 +511,7 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
-	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp")
+	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
 
 	if err := cmd.run([]string{"start", "tdd-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
@@ -541,11 +541,8 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 	}{
 		{event: "writeTest", suiteGreen: false, want: "advanced: spec -> red"},
 		{event: "implement", suiteGreen: true, want: "advanced: red -> green"},
-		{event: "inspect", suiteGreen: true, want: "advanced: green -> inspecting"},
-		{event: "refactor", suiteGreen: true, want: "advanced: inspecting -> refactoring"},
-		{event: "keepGreen", suiteGreen: true, want: "advanced: refactoring -> green"},
-		{event: "inspect", suiteGreen: true, want: "advanced: green -> inspecting"},
-		{event: "finish", suiteGreen: true, want: "advanced: inspecting -> done"},
+		{event: "reviewQuality", suiteGreen: true, want: "advanced: green -> qualityReview"},
+		{event: "finish", suiteGreen: true, want: "advanced: qualityReview -> done"},
 	} {
 		if step.suiteGreen {
 			if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
@@ -796,10 +793,11 @@ func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
 		t.Fatalf("goal = %q, want task", guidance.Goal)
 	}
 	for state, want := range map[string]string{
-		"spec":        "Write the failing test",
-		"red":         "Implement the smallest code",
-		"green":       "Inspect the changed code",
-		"refactoring": "Refactor while keeping checks green",
+		"spec":          "Write the failing test",
+		"red":           "Implement the smallest code",
+		"green":         "code quality",
+		"qualityReview": "If the quality gate fails",
+		"refactoring":   "Refactor only to satisfy",
 	} {
 		prompt := guidance.States[state].Prompt
 		if !strings.Contains(prompt, want) {
@@ -997,9 +995,9 @@ func writeRegistry(t *testing.T, root string, command string) {
 	}
 }
 
-func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string) {
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
 	t.Helper()
-	content := []byte("checks:\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write tdd registry: %v", err)

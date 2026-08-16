@@ -408,7 +408,7 @@ func TestRuntimeRetryAfterBlockedCheck(t *testing.T) {
 func TestRuntimeBlocksTDDFlowWhenSuiteIsPassing(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	writeTDDRegistry(t, root, "true")
+	writeTDDRegistry(t, root, "true", "true")
 	runtime, err := Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -436,7 +436,7 @@ func TestRuntimeBlocksTDDFlowWhenSuiteIsPassing(t *testing.T) {
 func TestRuntimePassesSessionEnvironmentToChecks(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp")
+	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
 	runtime, err := Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -475,7 +475,7 @@ func TestRuntimePassesSessionEnvironmentToChecks(t *testing.T) {
 func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp")
+	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
 	runtime, err := Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -496,10 +496,7 @@ func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
 	}{
 		{event: "writeTest", to: "red", suiteGreen: false},
 		{event: "implement", to: "green", suiteGreen: true},
-		{event: "inspect", to: "inspecting", suiteGreen: true},
-		{event: "refactor", to: "refactoring", suiteGreen: true},
-		{event: "keepGreen", to: "green", suiteGreen: true},
-		{event: "inspect", to: "inspecting", suiteGreen: true},
+		{event: "reviewQuality", to: "qualityReview", suiteGreen: true},
 		{event: "finish", to: "done", suiteGreen: true},
 	}
 	for _, step := range steps {
@@ -561,12 +558,12 @@ func writeRegistry(t *testing.T, root string, command string) {
 	}
 }
 
-func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string) {
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
 	t.Helper()
-	if strings.TrimSpace(testSuiteCommand) == "" {
-		t.Fatal("command must not be empty")
+	if strings.TrimSpace(testSuiteCommand) == "" || strings.TrimSpace(codeQualityCommand) == "" {
+		t.Fatal("commands must not be empty")
 	}
-	content := []byte("checks:\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write tdd registry: %v", err)

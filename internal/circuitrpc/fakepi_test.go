@@ -183,7 +183,7 @@ func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	}
 	statePath := filepath.Join(stateDir, "tdd-suite.state")
 	script := "if [ -f " + statePath + " ]; then exit 0; else touch " + statePath + "; exit 1; fi"
-	writeTDDRegistry(t, root, script)
+	writeTDDRegistry(t, root, script, "true")
 	runtime, err := circuitrun.Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -191,14 +191,14 @@ func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	if _, _, err := runtime.Start("tdd-flow"); err != nil {
 		t.Fatalf("start tdd-flow: %v", err)
 	}
-	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "inspect", "finish"}}
+	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "reviewQuality", "finish"}}
 	guidance := DriverGuidance{
 		Goal: "Deliver one guided TDD slice.",
 		States: map[string]StateGuidance{
-			"spec":       {Prompt: "Write the failing test.", Event: "writeTest"},
-			"red":        {Prompt: "Make the failing test pass.", Event: "implement"},
-			"green":      {Prompt: "Inspect the completed slice.", Event: "inspect"},
-			"inspecting": {Prompt: "Finish the inspected slice.", Event: "finish"},
+			"spec":          {Prompt: "Write the failing test.", Event: "writeTest"},
+			"red":           {Prompt: "Make the failing test pass.", Event: "implement"},
+			"green":         {Prompt: "Review code quality.", Event: "reviewQuality"},
+			"qualityReview": {Prompt: "Finish after quality review.", Event: "finish"},
 		},
 	}
 
@@ -215,8 +215,8 @@ func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	for index, want := range []string{
 		"Write the failing test.",
 		"Make the failing test pass.",
-		"Inspect the completed slice.",
-		"Finish the inspected slice.",
+		"Review code quality.",
+		"Finish after quality review.",
 	} {
 		if !strings.Contains(backend.prompts[index], want) {
 			t.Fatalf("prompt %d missing %q:\n%s", index, want, backend.prompts[index])
@@ -384,9 +384,9 @@ func (backend *scriptedBackend) Prompt(message string) (string, error) {
 	return response, nil
 }
 
-func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string) {
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
 	t.Helper()
-	content := []byte("checks:\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write tdd registry: %v", err)

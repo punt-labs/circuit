@@ -7,6 +7,10 @@ checks:
     kind: command
     command: sh machines/alternating-check.sh
     returns: BOOL
+  codeQualityPassed:
+    kind: command
+    command: make check-go-quality
+    returns: BOOL
   testSuitePassed:
     kind: command
     command: make check

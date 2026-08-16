@@ -11,9 +11,10 @@ contract cleanly:
 
 - `spec -> red` requires `not(testSuitePassed = TRUE)`.
 - `red -> green` requires `testSuitePassed = TRUE`.
-- `green -> refactoring` is an explicit choice.
+- `green -> qualityReview` requires `testSuitePassed = TRUE`.
+- `qualityReview -> done` requires `codeQualityPassed = TRUE`.
+- `qualityReview -> refactoring` requires `not(codeQualityPassed = TRUE)`.
 - `refactoring -> green` requires `testSuitePassed = TRUE`.
-- `green -> done` requires `testSuitePassed = TRUE`.
 
 The check-binding design also held up. The machine stayed universal and pure;
 the project-local proof lived outside B:
