@@ -496,8 +496,10 @@ func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
 	}{
 		{event: "writeTest", to: "red", suiteGreen: false},
 		{event: "implement", to: "green", suiteGreen: true},
+		{event: "inspect", to: "inspecting", suiteGreen: true},
 		{event: "refactor", to: "refactoring", suiteGreen: true},
 		{event: "keepGreen", to: "green", suiteGreen: true},
+		{event: "inspect", to: "inspecting", suiteGreen: true},
 		{event: "finish", to: "done", suiteGreen: true},
 	}
 	for _, step := range steps {

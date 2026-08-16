@@ -226,24 +226,56 @@ END
 	}
 }
 
-func TestTDDFlowFinishBlockedWithoutSuite(t *testing.T) {
+func TestTDDFlowRequiresInspectBeforeFinish(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
 	if err != nil {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": false})
+	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
 	if err != nil {
-		t.Fatalf("advance finish with failing suite: %v", err)
+		t.Fatalf("advance finish from green: %v", err)
 	}
 	if blocked.Allowed {
-		t.Fatal("finish allowed while test suite is failing")
+		t.Fatal("finish allowed from green before inspect")
 	}
 
-	allowed, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
+	inspected, err := machine.AdvanceFromWithBooleans("inspect", "green", map[string]bool{"testSuitePassed": true})
 	if err != nil {
-		t.Fatalf("advance finish with passing suite: %v", err)
+		t.Fatalf("advance inspect from green: %v", err)
+	}
+	if !inspected.Allowed || inspected.To != "inspecting" {
+		t.Fatalf("inspect from green = %#v, want inspecting", inspected)
+	}
+
+	finished, err := machine.AdvanceFromWithBooleans("finish", "inspecting", map[string]bool{"testSuitePassed": true})
+	if err != nil {
+		t.Fatalf("advance finish from inspecting: %v", err)
+	}
+	if !finished.Allowed || finished.To != "done" {
+		t.Fatalf("finish from inspecting = %#v, want done", finished)
+	}
+}
+
+func TestTDDFlowFinishAllowedAfterInspect(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
+	if err != nil {
+		t.Fatalf("load tdd-flow: %v", err)
+	}
+
+	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
+	if err != nil {
+		t.Fatalf("advance finish from green: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("finish allowed before inspect")
+	}
+
+	allowed, err := machine.AdvanceFromWithBooleans("finish", "inspecting", map[string]bool{"testSuitePassed": true})
+	if err != nil {
+		t.Fatalf("advance finish after inspect: %v", err)
 	}
 	if !allowed.Allowed || allowed.To != "done" {
 		t.Fatalf("finish with passing suite = %#v, want done", allowed)

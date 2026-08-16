@@ -512,9 +512,11 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 	}{
 		{event: "writeTest", suiteGreen: false, want: "advanced: spec -> red"},
 		{event: "implement", suiteGreen: true, want: "advanced: red -> green"},
-		{event: "refactor", suiteGreen: true, want: "advanced: green -> refactoring"},
+		{event: "inspect", suiteGreen: true, want: "advanced: green -> inspecting"},
+		{event: "refactor", suiteGreen: true, want: "advanced: inspecting -> refactoring"},
 		{event: "keepGreen", suiteGreen: true, want: "advanced: refactoring -> green"},
-		{event: "finish", suiteGreen: true, want: "advanced: green -> done"},
+		{event: "inspect", suiteGreen: true, want: "advanced: green -> inspecting"},
+		{event: "finish", suiteGreen: true, want: "advanced: inspecting -> done"},
 	} {
 		if step.suiteGreen {
 			if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
@@ -739,7 +741,7 @@ func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
 	for state, want := range map[string]string{
 		"spec":        "Write the failing test",
 		"red":         "Implement the smallest code",
-		"green":       "finish or request refactor",
+		"green":       "Inspect the changed code",
 		"refactoring": "Refactor while keeping checks green",
 	} {
 		prompt := guidance.States[state].Prompt

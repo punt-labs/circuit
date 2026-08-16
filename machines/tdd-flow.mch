@@ -1,7 +1,7 @@
 MACHINE TDDFlow
 SETS
-    STATE = {spec, red, green, refactoring, done};
-    TRANSITION = {writeTest, implement, refactor, keepGreen, finish}
+    STATE = {spec, red, green, inspecting, refactoring, done};
+    TRANSITION = {writeTest, implement, inspect, finish, refactor, keepGreen}
 VARIABLES
     current,
     testSuitePassed
@@ -26,21 +26,24 @@ OPERATIONS
             (
                 (current = spec & evt = writeTest & not(testSuitePassed = TRUE)) or
                 (current = red & evt = implement & testSuitePassed = TRUE) or
-                (current = green & evt = refactor) or
-                (current = refactoring & evt = keepGreen & testSuitePassed = TRUE) or
-                (current = green & evt = finish & testSuitePassed = TRUE)
+                (current = green & evt = inspect & testSuitePassed = TRUE) or
+                (current = inspecting & evt = finish) or
+                (current = inspecting & evt = refactor) or
+                (current = refactoring & evt = keepGreen & testSuitePassed = TRUE)
             )
         THEN
             IF current = spec & evt = writeTest THEN
                 current := red
             ELSIF current = red & evt = implement THEN
                 current := green
-            ELSIF current = green & evt = refactor THEN
+            ELSIF current = green & evt = inspect THEN
+                current := inspecting
+            ELSIF current = inspecting & evt = finish THEN
+                current := done
+            ELSIF current = inspecting & evt = refactor THEN
                 current := refactoring
             ELSIF current = refactoring & evt = keepGreen THEN
                 current := green
-            ELSIF current = green & evt = finish THEN
-                current := done
             END
         END
 END

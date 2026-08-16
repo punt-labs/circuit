@@ -191,13 +191,14 @@ func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	if _, _, err := runtime.Start("tdd-flow"); err != nil {
 		t.Fatalf("start tdd-flow: %v", err)
 	}
-	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "finish"}}
+	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "inspect", "finish"}}
 	guidance := DriverGuidance{
 		Goal: "Deliver one guided TDD slice.",
 		States: map[string]StateGuidance{
-			"spec":  {Prompt: "Write the failing test.", Event: "writeTest"},
-			"red":   {Prompt: "Make the failing test pass.", Event: "implement"},
-			"green": {Prompt: "Finish the completed slice.", Event: "finish"},
+			"spec":       {Prompt: "Write the failing test.", Event: "writeTest"},
+			"red":        {Prompt: "Make the failing test pass.", Event: "implement"},
+			"green":      {Prompt: "Inspect the completed slice.", Event: "inspect"},
+			"inspecting": {Prompt: "Finish the inspected slice.", Event: "finish"},
 		},
 	}
 
@@ -205,16 +206,17 @@ func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run guided session: %v", err)
 	}
-	if result.Prompts != 3 {
-		t.Fatalf("prompts = %d, want 3", result.Prompts)
+	if result.Prompts != 4 {
+		t.Fatalf("prompts = %d, want 4", result.Prompts)
 	}
-	if len(result.Transitions) != 3 {
-		t.Fatalf("transitions = %d, want 3", len(result.Transitions))
+	if len(result.Transitions) != 4 {
+		t.Fatalf("transitions = %d, want 4", len(result.Transitions))
 	}
 	for index, want := range []string{
 		"Write the failing test.",
 		"Make the failing test pass.",
-		"Finish the completed slice.",
+		"Inspect the completed slice.",
+		"Finish the inspected slice.",
 	} {
 		if !strings.Contains(backend.prompts[index], want) {
 			t.Fatalf("prompt %d missing %q:\n%s", index, want, backend.prompts[index])

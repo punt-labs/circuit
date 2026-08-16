@@ -12,10 +12,21 @@ states:
     event: implement
   green:
     prompt: >
-      The slice is green. If it is complete, request finish or request refactor
-      if cleanup is needed.
+      The slice is green. Inspect the changed code for refactoring needs before
+      deciding finish or refactor. Look for duplication, poor names, long
+      functions, mixed responsibilities, repeated parsing or JSON mapping, and
+      missed extraction opportunities. When inspection is complete, request the
+      transition event.
+    event: inspect
+  inspecting:
+    prompt: >
+      Based on the inspection, request finish if no refactor is needed, or
+      request refactor if any smell should be fixed.
   refactoring:
     prompt: >
-      Refactor while keeping checks green. When the full check passes, request
-      the transition event.
+      Refactor while keeping checks green. Use standard refactorings when they
+      apply: Extract Function, Extract Type, Extract Helper, Rename for clarity,
+      consolidate duplicate conditionals, and move repeated mapping logic into
+      one place. Do not change behavior. When the full check passes, request the
+      transition event.
     event: keepGreen
