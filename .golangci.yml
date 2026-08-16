@@ -21,9 +21,13 @@ linters:
         - -ST1021
         - -ST1022
         - -QF*
+    dupl:
+      threshold: 100
     funlen:
-      lines: 80
-      statements: 60
+      lines: 70
+      statements: 40
+    gocognit:
+      min-complexity: 20
 
 formatters:
   enable:
