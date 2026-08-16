@@ -604,11 +604,12 @@ func parseAdvanceArgs(args []string) (jsonMode bool, event string, session strin
 		case jsonFlag:
 			jsonMode = true
 		default:
-			if event == "" {
+			switch {
+			case event == "":
 				event = arg
-			} else if session == "" {
+			case session == "":
 				session = arg
-			} else {
+			default:
 				return false, "", "", fmt.Errorf("unexpected argument: %s", arg)
 			}
 		}
