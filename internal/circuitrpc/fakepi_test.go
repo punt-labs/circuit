@@ -10,8 +10,34 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
+
+func TestPiRPCBackendPromptRoundtripsThroughFakeProcess(t *testing.T) {
+	t.Parallel()
+	piIn, backendOut := io.Pipe()
+	backendIn, piOut := io.Pipe()
+	defer piIn.Close()
+	defer piOut.Close()
+
+	go fakePi(t, bufio.NewReader(piIn), piOut, map[string]string{"idle": "start"})
+
+	status := circuitrun.StatusReport{
+		MachineName: "build-job",
+		Current:     "idle",
+		Enabled:     []circuitb.CallStatus{{Call: "Advance(start)"}},
+	}
+	backend := NewPiRPCBackend(backendOut, bufio.NewReader(backendIn))
+
+	response, err := backend.Prompt(FormatPrompt(status))
+	if err != nil {
+		t.Fatalf("backend prompt: %v", err)
+	}
+	if strings.TrimSpace(response) != "start" {
+		t.Fatalf("response = %q, want start", response)
+	}
+}
 
 func TestRunnerLoopRejectsInvalidFakePiResponse(t *testing.T) {
 	t.Parallel()
