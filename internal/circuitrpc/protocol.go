@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
 
@@ -51,9 +52,19 @@ func FormatPrompt(status circuitrun.StatusReport) string {
 }
 
 func ExtractOperation(response string, status circuitrun.StatusReport) string {
+	return extractOperationFromCalls(response, status.Enabled)
+}
+
+func ExtractRequestedOperation(response string, status circuitrun.StatusReport) string {
+	calls := append([]circuitb.CallStatus{}, status.Enabled...)
+	calls = append(calls, status.Blocked...)
+	return extractOperationFromCalls(response, calls)
+}
+
+func extractOperationFromCalls(response string, calls []circuitb.CallStatus) string {
 	trimmed := strings.TrimSpace(response)
 	// Prefer exact match first.
-	for _, call := range status.Enabled {
+	for _, call := range calls {
 		event := ExtractEvent(call.Call)
 		if strings.EqualFold(trimmed, event) {
 			return event
@@ -62,7 +73,7 @@ func ExtractOperation(response string, status circuitrun.StatusReport) string {
 	// Fall back to word-boundary containment.
 	lower := strings.ToLower(trimmed)
 	words := strings.Fields(lower)
-	for _, call := range status.Enabled {
+	for _, call := range calls {
 		event := ExtractEvent(call.Call)
 		eventLower := strings.ToLower(event)
 		for _, word := range words {

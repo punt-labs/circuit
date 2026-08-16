@@ -17,6 +17,11 @@ type DriverResult struct {
 	Transition circuitrun.AdvanceReport
 }
 
+type SessionDriverResult struct {
+	Prompts     int
+	Transitions []circuitrun.AdvanceReport
+}
+
 type DriverGuidance struct {
 	Goal   string
 	States map[string]StateGuidance
@@ -25,6 +30,19 @@ type DriverGuidance struct {
 type StateGuidance struct {
 	Prompt string
 	Event  string
+}
+
+func RunGuidedSession(runtime *circuitrun.Runtime, backend AgentBackend, guidance DriverGuidance) (SessionDriverResult, error) {
+	result := SessionDriverResult{}
+	for runtime.IsActive() {
+		step, err := RunUntilAcceptedWithGuidance(runtime, backend, guidance)
+		result.Prompts += step.Prompts
+		if err != nil {
+			return result, err
+		}
+		result.Transitions = append(result.Transitions, step.Transition)
+	}
+	return result, nil
 }
 
 func RunUntilAccepted(runtime *circuitrun.Runtime, backend AgentBackend) (DriverResult, error) {
@@ -56,15 +74,15 @@ func RunUntilAcceptedWithGuidance(runtime *circuitrun.Runtime, backend AgentBack
 		if err != nil {
 			return result, err
 		}
-		if IsTerminal(status) {
-			return result, fmt.Errorf("cannot drive terminal state %s", status.Current)
+		if status.SessionState == circuitrun.SessionStopped {
+			return result, fmt.Errorf("cannot drive stopped state %s", status.Current)
 		}
 		response, err := backend.Prompt(FormatPromptWithGuidance(status, guidance))
 		if err != nil {
 			return result, err
 		}
 		result.Prompts++
-		operation := ExtractOperation(response, status)
+		operation := ExtractRequestedOperation(response, status)
 		if operation == "" {
 			continue
 		}

@@ -148,6 +148,55 @@ func TestRunnerRepromptsAfterBlockedOperation(t *testing.T) {
 	}
 }
 
+func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "true", "true")
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("tdd-flow"); err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "finish"}}
+	guidance := DriverGuidance{
+		Goal: "Deliver one guided TDD slice.",
+		States: map[string]StateGuidance{
+			"spec":  {Prompt: "Write the failing test.", Event: "writeTest"},
+			"red":   {Prompt: "Make the failing test pass.", Event: "implement"},
+			"green": {Prompt: "Finish the completed slice.", Event: "finish"},
+		},
+	}
+
+	result, err := RunGuidedSession(runtime, backend, guidance)
+	if err != nil {
+		t.Fatalf("run guided session: %v", err)
+	}
+	if result.Prompts != 3 {
+		t.Fatalf("prompts = %d, want 3", result.Prompts)
+	}
+	if len(result.Transitions) != 3 {
+		t.Fatalf("transitions = %d, want 3", len(result.Transitions))
+	}
+	for index, want := range []string{
+		"Write the failing test.",
+		"Make the failing test pass.",
+		"Finish the completed slice.",
+	} {
+		if !strings.Contains(backend.prompts[index], want) {
+			t.Fatalf("prompt %d missing %q:\n%s", index, want, backend.prompts[index])
+		}
+	}
+	status, err := runtime.Status()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.Current != "done" || status.SessionState != circuitrun.SessionStopped {
+		t.Fatalf("final status = %s/%s, want done/stopped", status.Current, status.SessionState)
+	}
+}
+
 func TestRunnerLoopAgainstFakePi(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
@@ -301,6 +350,15 @@ func (backend *scriptedBackend) Prompt(message string) (string, error) {
 	return response, nil
 }
 
+func writeTDDRegistry(t *testing.T, root string, failingTestCommand string, testSuiteCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  failingTestObserved:\n    kind: command\n    command: " + failingTestCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
+	}
+}
+
 func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[string]string) {
 	t.Helper()
 	for {
@@ -347,7 +405,7 @@ func testRoot(t *testing.T) string {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch"} {
+	for _, name := range []string{"build-job.mch", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml"} {
 		content, err := os.ReadFile(filepath.Join("..", "..", "machines", name))
 		if err != nil {
 			t.Fatalf("read fixture %s: %v", name, err)
