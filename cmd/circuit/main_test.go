@@ -594,6 +594,34 @@ func TestBMachineStop(t *testing.T) {
 	}
 }
 
+func TestBMachineStopJSONReportsStoppedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", "--json", sessionID}); err != nil {
+		t.Fatalf("stop --json returned error: %v", err)
+	}
+	var report statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("stop --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session != sessionID {
+		t.Fatalf("session = %q, want %q", report.Session, sessionID)
+	}
+	if report.SessionState != "stopped" || report.Machine != "build-job" || report.Current != "idle" {
+		t.Fatalf("stop --json report = %#v, want stopped build-job at idle", report)
+	}
+	if len(report.Enabled) == 0 || len(report.Blocked) == 0 {
+		t.Fatalf("stop --json missing operations: %#v", report)
+	}
+}
+
 func TestBMachineUnloadStoppedSession(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}

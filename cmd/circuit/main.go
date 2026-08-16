@@ -187,7 +187,7 @@ func (cmd command) start(args []string) error {
 		return err
 	}
 	if jsonMode {
-		return cmd.writeStartJSON(report)
+		return cmd.writeStatusReportJSON(report)
 	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
@@ -424,18 +424,7 @@ func (cmd command) status(args []string) error {
 }
 
 func parseStatusArgs(args []string) (jsonMode bool, session string, err error) {
-	for _, arg := range args {
-		switch arg {
-		case "--json":
-			jsonMode = true
-		default:
-			if session != "" {
-				return false, "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			session = arg
-		}
-	}
-	return jsonMode, session, nil
+	return parseJSONFlagWithOptionalArgument(args)
 }
 
 type loadJSONEntry struct {
@@ -480,12 +469,7 @@ type checkJSON struct {
 }
 
 func (cmd command) writeLoadJSON(report circuitrun.LoadReport) error {
-	output, err := json.MarshalIndent(loadJSONEntry{Machine: report.MachineName, Checks: report.Checks}, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.stdout, string(output))
-	return nil
+	return cmd.writeJSON(loadJSONEntry{Machine: report.MachineName, Checks: report.Checks})
 }
 
 func (cmd command) writeScaffoldJSON(report circuitrun.ScaffoldReport) error {
@@ -494,12 +478,7 @@ func (cmd command) writeScaffoldJSON(report circuitrun.ScaffoldReport) error {
 		GeneratedBindings:    report.GeneratedBindings,
 		GeneratedRegistryIDs: report.GeneratedRegistryIDs,
 	}
-	output, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.stdout, string(output))
-	return nil
+	return cmd.writeJSON(entry)
 }
 
 func (cmd command) writeAdvanceJSON(report circuitrun.AdvanceReport) error {
@@ -518,21 +497,11 @@ func (cmd command) writeAdvanceJSON(report circuitrun.AdvanceReport) error {
 	if len(checks) > 0 {
 		entry.Checks = checks
 	}
-	output, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.stdout, string(output))
-	return nil
+	return cmd.writeJSON(entry)
 }
 
-func (cmd command) writeStartJSON(report circuitrun.StatusReport) error {
-	output, err := json.MarshalIndent(statusJSONEntryFrom(report), "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.stdout, string(output))
-	return nil
+func (cmd command) writeStatusReportJSON(report circuitrun.StatusReport) error {
+	return cmd.writeJSON(statusJSONEntryFrom(report))
 }
 
 func (cmd command) writeStatusJSON(reports []circuitrun.StatusReport) error {
@@ -540,7 +509,11 @@ func (cmd command) writeStatusJSON(reports []circuitrun.StatusReport) error {
 	for _, report := range reports {
 		entries = append(entries, statusJSONEntryFrom(report))
 	}
-	output, err := json.MarshalIndent(entries, "", "  ")
+	return cmd.writeJSON(entries)
+}
+
+func (cmd command) writeJSON(entry any) error {
+	output, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -652,23 +625,55 @@ func (cmd command) unload(args []string) error {
 }
 
 func (cmd command) stop(args []string) error {
-	if len(args) > 1 {
-		return fmt.Errorf("expected at most one argument, got %d", len(args))
+	jsonMode, session, err := parseStopArgs(args)
+	if err != nil {
+		return err
 	}
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
-	if len(args) == 1 {
-		err = runtime.StopByID(args[0])
+	if session != "" {
+		err = runtime.StopByID(session)
 	} else {
 		err = runtime.Stop()
 	}
 	if err != nil {
 		return err
 	}
+	if jsonMode {
+		var report circuitrun.StatusReport
+		if session != "" {
+			report, err = runtime.StatusByID(session)
+		} else {
+			report, err = runtime.Status()
+		}
+		if err != nil {
+			return err
+		}
+		return cmd.writeStatusReportJSON(report)
+	}
 	fmt.Fprintln(cmd.stdout, "stopped")
 	return nil
+}
+
+func parseStopArgs(args []string) (jsonMode bool, session string, err error) {
+	return parseJSONFlagWithOptionalArgument(args)
+}
+
+func parseJSONFlagWithOptionalArgument(args []string) (jsonMode bool, argument string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if argument != "" {
+				return false, "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			argument = arg
+		}
+	}
+	return jsonMode, argument, nil
 }
 
 func (cmd command) printStatusReports(reports []circuitrun.StatusReport) {
