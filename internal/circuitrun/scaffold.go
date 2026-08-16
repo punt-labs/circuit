@@ -36,7 +36,7 @@ func (runtime *Runtime) Scaffold(machineName string) (ScaffoldReport, error) {
 			report.GeneratedBindings = append(report.GeneratedBindings, variable)
 		}
 		if _, ok := registry.Checks[binding.Use]; !ok {
-			registry.Checks[binding.Use] = registeredCheck{Kind: "command", Command: "false", Returns: "BOOL"}
+			registry.Checks[binding.Use] = registeredCheck{Kind: checkKindCommand, Command: "false", Returns: checkReturnBool}
 			report.GeneratedRegistryIDs = append(report.GeneratedRegistryIDs, binding.Use)
 		}
 	}

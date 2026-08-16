@@ -24,7 +24,7 @@ func (runtime *Runtime) Load(machineName string) (LoadReport, error) {
 		if !ok {
 			return LoadReport{}, fmt.Errorf("check %s references unknown registry entry %s", variable, binding.Use)
 		}
-		if registered.Kind != "command" || registered.Returns != "BOOL" {
+		if registered.Kind != checkKindCommand || registered.Returns != checkReturnBool {
 			return LoadReport{}, fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
 		report.Checks = append(report.Checks, CheckBindingReport{Variable: variable, Use: binding.Use, Returns: registered.Returns})

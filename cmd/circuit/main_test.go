@@ -25,6 +25,17 @@ func TestBMachineList(t *testing.T) {
 	}
 }
 
+func TestCheckGoQualityIncludesGoconst(t *testing.T) {
+	t.Parallel()
+	content, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	if !strings.Contains(string(content), "--enable-only=dupl,gocognit,funlen,goconst") {
+		t.Fatalf("check-go-quality must enable goconst")
+	}
+}
+
 func TestBMachineLoadValidatesChecks(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}

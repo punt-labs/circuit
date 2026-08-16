@@ -41,7 +41,7 @@ func (runtime *Runtime) runChecks(run *Run) error {
 		if !ok {
 			return fmt.Errorf("check %s references unknown registry entry %s", variable, binding.Use)
 		}
-		if registered.Kind != "command" || registered.Returns != "BOOL" {
+		if registered.Kind != checkKindCommand || registered.Returns != checkReturnBool {
 			return fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
 		passed := runtime.runBooleanCommand(registered.Command, run)

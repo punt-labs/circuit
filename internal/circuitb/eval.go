@@ -184,10 +184,10 @@ func (expression identifierExpression) evaluate(values map[string]value, binding
 	if item, ok := values[expression.name]; ok {
 		return item
 	}
-	if expression.name == "TRUE" {
+	if expression.name == booleanLiteralTrue {
 		return value{kind: valueBool, bool: true}
 	}
-	if expression.name == "FALSE" {
+	if expression.name == booleanLiteralFalse {
 		return value{kind: valueBool, bool: false}
 	}
 	return value{kind: valueEnum, enum: expression.name}

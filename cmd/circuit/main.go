@@ -18,7 +18,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const exitUsage = 2
+const (
+	exitUsage     = 2
+	jsonFlag      = "--json"
+	traceKeyState = "state"
+	traceKeyType  = "type"
+)
 
 type command struct {
 	stdout  io.Writer
@@ -111,7 +116,7 @@ func (cmd command) load(args []string) error {
 func parseLoadArgs(args []string) (jsonMode bool, machine string, err error) {
 	for _, arg := range args {
 		switch arg {
-		case "--json":
+		case jsonFlag:
 			jsonMode = true
 		default:
 			if machine != "" {
@@ -155,7 +160,7 @@ func (cmd command) scaffold(args []string) error {
 func parseScaffoldArgs(args []string) (jsonMode bool, machine string, err error) {
 	for _, arg := range args {
 		switch arg {
-		case "--json":
+		case jsonFlag:
 			jsonMode = true
 		default:
 			if machine != "" {
@@ -198,7 +203,7 @@ func (cmd command) start(args []string) error {
 func parseStartArgs(args []string) (jsonMode bool, machine string, err error) {
 	for _, arg := range args {
 		switch arg {
-		case "--json":
+		case jsonFlag:
 			jsonMode = true
 		default:
 			if machine != "" {
@@ -247,7 +252,7 @@ func (cmd command) drive(args []string) error {
 	}
 	result, err := circuitrpc.RunGuidedSession(runtime, backend, guidance)
 	for _, transition := range result.Transitions {
-		writeTrace(trace, map[string]any{"type": "advance", "state": transition.From, "event": transition.Event, "allowed": transition.Allowed, "from": transition.From, "to": transition.To, "failed": transition.Failed})
+		writeTrace(trace, map[string]any{traceKeyType: "advance", traceKeyState: transition.From, "event": transition.Event, "allowed": transition.Allowed, "from": transition.From, "to": transition.To, "failed": transition.Failed})
 	}
 	for _, transition := range result.Transitions {
 		if transition.Allowed {
@@ -278,10 +283,10 @@ type traceBackend struct {
 
 func (backend traceBackend) Prompt(message string) (string, error) {
 	state := currentStateFromPrompt(message)
-	writeTrace(backend.trace, map[string]any{"type": "prompt", "state": state, "text": message})
+	writeTrace(backend.trace, map[string]any{traceKeyType: "prompt", traceKeyState: state, "text": message})
 	response, err := backend.backend.Prompt(message)
-	writeTrace(backend.trace, map[string]any{"type": "response", "state": state, "text": response})
-	writeTrace(backend.trace, map[string]any{"type": "workspace", "state": state, "status": gitStatusShort(backend.cwd)})
+	writeTrace(backend.trace, map[string]any{traceKeyType: "response", traceKeyState: state, "text": response})
+	writeTrace(backend.trace, map[string]any{traceKeyType: "workspace", traceKeyState: state, "status": gitStatusShort(backend.cwd)})
 	return response, err
 }
 
@@ -596,7 +601,7 @@ func (cmd command) advance(args []string) error {
 func parseAdvanceArgs(args []string) (jsonMode bool, event string, session string, err error) {
 	for _, arg := range args {
 		switch arg {
-		case "--json":
+		case jsonFlag:
 			jsonMode = true
 		default:
 			if event == "" {
@@ -684,7 +689,7 @@ func parseStopArgs(args []string) (jsonMode bool, session string, err error) {
 func parseJSONFlagWithOptionalArgument(args []string) (jsonMode bool, argument string, err error) {
 	for _, arg := range args {
 		switch arg {
-		case "--json":
+		case jsonFlag:
 			jsonMode = true
 		default:
 			if argument != "" {
