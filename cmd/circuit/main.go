@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrpc"
@@ -177,11 +178,20 @@ func (cmd command) drive(args []string) error {
 	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	trace, err := cmd.openDriveTrace(id)
+	if err != nil {
+		return err
+	}
+	defer trace.Close()
+	backend = traceBackend{backend: backend, trace: trace, cwd: cmd.workingDir()}
 	guidance, err := cmd.loadGuidance(machine, task)
 	if err != nil {
 		return err
 	}
 	result, err := circuitrpc.RunGuidedSession(runtime, backend, guidance)
+	for _, transition := range result.Transitions {
+		writeTrace(trace, map[string]any{"type": "advance", "state": transition.From, "event": transition.Event, "allowed": transition.Allowed, "from": transition.From, "to": transition.To, "failed": transition.Failed})
+	}
 	for _, transition := range result.Transitions {
 		if transition.Allowed {
 			fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", transition.From, transition.To)
@@ -196,6 +206,59 @@ func (cmd command) drive(args []string) error {
 	}
 	fmt.Fprintf(cmd.stdout, "terminal: %s\n", status.Current)
 	return runtime.Suspend()
+}
+
+type driveTrace interface {
+	io.Writer
+	Close() error
+}
+
+type traceBackend struct {
+	backend circuitrpc.AgentBackend
+	trace   io.Writer
+	cwd     string
+}
+
+func (backend traceBackend) Prompt(message string) (string, error) {
+	state := currentStateFromPrompt(message)
+	writeTrace(backend.trace, map[string]any{"type": "prompt", "state": state, "text": message})
+	response, err := backend.backend.Prompt(message)
+	writeTrace(backend.trace, map[string]any{"type": "response", "state": state, "text": response})
+	writeTrace(backend.trace, map[string]any{"type": "workspace", "state": state, "status": gitStatusShort(backend.cwd)})
+	return response, err
+}
+
+func (cmd command) openDriveTrace(sessionID string) (driveTrace, error) {
+	path := filepath.Join(cmd.workingDir(), ".tmp", "circuit", sessionID, "drive.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	return os.Create(path)
+}
+
+func writeTrace(writer io.Writer, event map[string]any) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(writer, "%s\n", data)
+}
+
+func currentStateFromPrompt(message string) string {
+	for _, line := range strings.Split(message, "\n") {
+		if strings.HasPrefix(line, "Current state: ") {
+			return strings.TrimPrefix(line, "Current state: ")
+		}
+	}
+	return ""
+}
+
+func gitStatusShort(cwd string) string {
+	output, err := exec.Command("git", "-C", cwd, "status", "--short").Output()
+	if err != nil {
+		return ""
+	}
+	return string(output)
 }
 
 func parseDriveArgs(args []string) (machine string, task string, err error) {

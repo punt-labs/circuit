@@ -705,6 +705,36 @@ func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
 	}
 }
 
+func TestDriveCommandWritesTrace(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	cmd.backend = &stubBackend{responses: []string{"start", "finish"}}
+
+	if err := cmd.run([]string{"drive", "build-job", "--task", "Trace drive run."}); err != nil {
+		t.Fatalf("drive returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	tracePath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "drive.jsonl")
+	content, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	trace := string(content)
+	for _, want := range []string{
+		`"type":"prompt"`,
+		`"type":"response"`,
+		`"type":"advance"`,
+		`"type":"workspace"`,
+		`"state":"idle"`,
+		`"event":"start"`,
+	} {
+		if !strings.Contains(trace, want) {
+			t.Fatalf("trace missing %s:\n%s", want, trace)
+		}
+	}
+}
+
 func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
