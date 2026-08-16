@@ -93,6 +93,35 @@ func TestBMachineScaffoldGeneratesFailingCheckStubs(t *testing.T) {
 	}
 }
 
+func TestBMachineScaffoldJSONReportsGeneratedStubs(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("remove registry: %v", err)
+	}
+
+	if err := cmd.run([]string{"scaffold", "--json", "review-flow"}); err != nil {
+		t.Fatalf("scaffold --json returned error: %v", err)
+	}
+	var report scaffoldJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("scaffold --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Machine != "review-flow" {
+		t.Fatalf("machine = %q, want review-flow", report.Machine)
+	}
+	if len(report.GeneratedBindings) != 1 || report.GeneratedBindings[0] != "makeCheckPassed" {
+		t.Fatalf("generated bindings = %#v, want makeCheckPassed", report.GeneratedBindings)
+	}
+	if len(report.GeneratedRegistryIDs) != 1 || report.GeneratedRegistryIDs[0] != "makeCheckPassed" {
+		t.Fatalf("generated registry IDs = %#v, want makeCheckPassed", report.GeneratedRegistryIDs)
+	}
+}
+
 func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
@@ -862,6 +891,12 @@ type advanceJSONTest struct {
 type loadJSONTest struct {
 	Machine string                 `json:"machine"`
 	Checks  []checkBindingJSONTest `json:"checks"`
+}
+
+type scaffoldJSONTest struct {
+	Machine              string   `json:"machine"`
+	GeneratedBindings    []string `json:"generatedBindings"`
+	GeneratedRegistryIDs []string `json:"generatedRegistryIDs"`
 }
 
 type checkBindingJSONTest struct {

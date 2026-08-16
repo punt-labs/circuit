@@ -127,7 +127,7 @@ func parseLoadArgs(args []string) (jsonMode bool, machine string, err error) {
 }
 
 func (cmd command) scaffold(args []string) error {
-	machine, err := singleArg(args)
+	jsonMode, machine, err := parseScaffoldArgs(args)
 	if err != nil {
 		return err
 	}
@@ -139,6 +139,9 @@ func (cmd command) scaffold(args []string) error {
 	if err != nil {
 		return err
 	}
+	if jsonMode {
+		return cmd.writeScaffoldJSON(report)
+	}
 	fmt.Fprintf(cmd.stdout, "scaffolded: %s\n", report.MachineName)
 	for _, variable := range report.GeneratedBindings {
 		fmt.Fprintf(cmd.stdout, "binding: %s\n", variable)
@@ -147,6 +150,24 @@ func (cmd command) scaffold(args []string) error {
 		fmt.Fprintf(cmd.stdout, "stub: %s -> false\n", check)
 	}
 	return nil
+}
+
+func parseScaffoldArgs(args []string) (jsonMode bool, machine string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if machine != "" {
+				return false, "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			machine = arg
+		}
+	}
+	if machine == "" {
+		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
+	}
+	return jsonMode, machine, nil
 }
 
 func (cmd command) start(args []string) error {
@@ -422,6 +443,12 @@ type loadJSONEntry struct {
 	Checks  []circuitrun.CheckBindingReport `json:"checks"`
 }
 
+type scaffoldJSONEntry struct {
+	Machine              string   `json:"machine"`
+	GeneratedBindings    []string `json:"generatedBindings"`
+	GeneratedRegistryIDs []string `json:"generatedRegistryIDs"`
+}
+
 type advanceJSONEntry struct {
 	Session string               `json:"session,omitempty"`
 	Allowed bool                 `json:"allowed"`
@@ -454,6 +481,20 @@ type checkJSON struct {
 
 func (cmd command) writeLoadJSON(report circuitrun.LoadReport) error {
 	output, err := json.MarshalIndent(loadJSONEntry{Machine: report.MachineName, Checks: report.Checks}, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, string(output))
+	return nil
+}
+
+func (cmd command) writeScaffoldJSON(report circuitrun.ScaffoldReport) error {
+	entry := scaffoldJSONEntry{
+		Machine:              report.MachineName,
+		GeneratedBindings:    report.GeneratedBindings,
+		GeneratedRegistryIDs: report.GeneratedRegistryIDs,
+	}
+	output, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -694,7 +735,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "commands:")
 	fmt.Fprintln(cmd.stderr, "  list                        list available B machines")
 	fmt.Fprintln(cmd.stderr, "  load [--json] <machine>     validate machine and check bindings")
-	fmt.Fprintln(cmd.stderr, "  scaffold <machine>          generate missing check bindings and false stubs")
+	fmt.Fprintln(cmd.stderr, "  scaffold [--json] <machine> generate missing check bindings and false stubs")
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")
 	fmt.Fprintln(cmd.stderr, "  advance [--json] <event> [session]")
