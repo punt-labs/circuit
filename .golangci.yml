@@ -28,6 +28,8 @@ linters:
       statements: 40
     gocognit:
       min-complexity: 20
+    maintidx:
+      under: 40
 
 formatters:
   enable:

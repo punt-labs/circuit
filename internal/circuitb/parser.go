@@ -188,47 +188,17 @@ func (parser *parser) operation() (rawOperation, error) {
 		return rawOperation{}, err
 	}
 	operation := rawOperation{Name: first.value, Span: first.span}
-	if parser.consume(tokenReturn) {
-		operation.Output = &rawIdentifier{Name: first.value, Span: first.span}
-		name, err := parser.expect(tokenIdentifier, "expected query operation name")
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Name = name.value
+	if err := parser.queryOperation(&operation, first); err != nil {
+		return rawOperation{}, err
 	}
-	if parser.consume(tokenLParen) {
-		parameters, err := parser.identifierList(tokenRParen, "expected parameter name")
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Parameters = parameters
-		if _, err := parser.expect(tokenRParen, "expected ) after parameters"); err != nil {
-			return rawOperation{}, err
-		}
+	if err := parser.operationParameters(&operation); err != nil {
+		return rawOperation{}, err
 	}
 	if _, err := parser.expect(tokenEquals, "expected = in operation"); err != nil {
 		return rawOperation{}, err
 	}
-	if parser.consume(tokenPre) {
-		pre, err := parser.predicateUntil(tokenThen)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Pre = pre
-		if _, err := parser.expect(tokenThen, "expected THEN in operation"); err != nil {
-			return rawOperation{}, err
-		}
-		body, err := parser.substitutionUntil(tokenEnd)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Body = body
-	} else {
-		body, err := parser.substitutionUntil(tokenEnd)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Body = body
+	if err := parser.operationBody(&operation); err != nil {
+		return rawOperation{}, err
 	}
 	end, err := parser.expect(tokenEnd, "expected END after operation")
 	if err != nil {
@@ -237,6 +207,51 @@ func (parser *parser) operation() (rawOperation, error) {
 	operation.Span.EndLine = end.span.EndLine
 	operation.Span.EndColumn = end.span.EndColumn
 	return operation, nil
+}
+
+func (parser *parser) queryOperation(operation *rawOperation, first token) error {
+	if !parser.consume(tokenReturn) {
+		return nil
+	}
+	operation.Output = &rawIdentifier{Name: first.value, Span: first.span}
+	name, err := parser.expect(tokenIdentifier, "expected query operation name")
+	if err != nil {
+		return err
+	}
+	operation.Name = name.value
+	return nil
+}
+
+func (parser *parser) operationParameters(operation *rawOperation) error {
+	if !parser.consume(tokenLParen) {
+		return nil
+	}
+	parameters, err := parser.identifierList(tokenRParen, "expected parameter name")
+	if err != nil {
+		return err
+	}
+	operation.Parameters = parameters
+	_, err = parser.expect(tokenRParen, "expected ) after parameters")
+	return err
+}
+
+func (parser *parser) operationBody(operation *rawOperation) error {
+	if !parser.consume(tokenPre) {
+		body, err := parser.substitutionUntil(tokenEnd)
+		operation.Body = body
+		return err
+	}
+	pre, err := parser.predicateUntil(tokenThen)
+	if err != nil {
+		return err
+	}
+	operation.Pre = pre
+	if _, err := parser.expect(tokenThen, "expected THEN in operation"); err != nil {
+		return err
+	}
+	body, err := parser.substitutionUntil(tokenEnd)
+	operation.Body = body
+	return err
 }
 
 func (parser *parser) predicateUntil(end tokenType) (rawPredicate, error) {

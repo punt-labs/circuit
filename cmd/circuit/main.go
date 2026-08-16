@@ -230,17 +230,7 @@ func (cmd command) drive(args []string) error {
 	if stopBackend != nil {
 		defer stopBackend()
 	}
-	runtime, err := circuitrun.Resume(cmd.workingDir())
-	if err != nil {
-		return err
-	}
-	id, report, err := runtime.Start(machine)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
-	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
-	trace, err := cmd.openDriveTrace(id)
+	runtime, id, trace, err := cmd.startDrivenSession(machine)
 	if err != nil {
 		return err
 	}
@@ -251,17 +241,42 @@ func (cmd command) drive(args []string) error {
 		return err
 	}
 	result, err := circuitrpc.RunGuidedSession(runtime, backend, guidance)
-	for _, transition := range result.Transitions {
-		writeTrace(trace, map[string]any{traceKeyType: "advance", traceKeyState: transition.From, "event": transition.Event, "allowed": transition.Allowed, "from": transition.From, "to": transition.To, "failed": transition.Failed})
+	cmd.printDriveTransitions(trace, result.Transitions)
+	if err != nil {
+		return err
 	}
-	for _, transition := range result.Transitions {
+	return cmd.finishDrivenSession(runtime, id)
+}
+
+func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, string, driveTrace, error) {
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return nil, "", nil, err
+	}
+	id, report, err := runtime.Start(machine)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
+	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	trace, err := cmd.openDriveTrace(id)
+	return runtime, id, trace, err
+}
+
+func (cmd command) printDriveTransitions(trace io.Writer, transitions []circuitrun.AdvanceReport) {
+	for _, transition := range transitions {
+		writeDriveTransition(trace, transition)
 		if transition.Allowed {
 			fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", transition.From, transition.To)
 		}
 	}
-	if err != nil {
-		return err
-	}
+}
+
+func writeDriveTransition(trace io.Writer, transition circuitrun.AdvanceReport) {
+	writeTrace(trace, map[string]any{traceKeyType: "advance", traceKeyState: transition.From, "event": transition.Event, "allowed": transition.Allowed, "from": transition.From, "to": transition.To, "failed": transition.Failed})
+}
+
+func (cmd command) finishDrivenSession(runtime *circuitrun.Runtime, id string) error {
 	status, err := runtime.StatusByID(id)
 	if err != nil {
 		return err

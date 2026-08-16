@@ -25,14 +25,17 @@ func TestBMachineList(t *testing.T) {
 	}
 }
 
-func TestCheckGoQualityIncludesGoconst(t *testing.T) {
+func TestCheckGoQualityIncludesQualityLinters(t *testing.T) {
 	t.Parallel()
 	content, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
 	}
-	if !strings.Contains(string(content), "--enable-only=dupl,gocognit,funlen,goconst") {
-		t.Fatalf("check-go-quality must enable goconst")
+	makefile := string(content)
+	for _, linter := range []string{"dupl", "gocognit", "funlen", "goconst", "gocritic", "maintidx"} {
+		if !strings.Contains(makefile, linter) {
+			t.Fatalf("check-go-quality must enable %s", linter)
+		}
 	}
 }
 
