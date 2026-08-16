@@ -83,6 +83,43 @@ func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	}
 }
 
+func TestAdvanceJSONReportsAllowedAndBlockedTransitions(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "--json", "start"}); err != nil {
+		t.Fatalf("advance --json start returned error: %v", err)
+	}
+	var allowed advanceJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &allowed); err != nil {
+		t.Fatalf("allowed advance output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if !allowed.Allowed || allowed.Event != "start" || allowed.From != "idle" || allowed.To != "running" {
+		t.Fatalf("allowed advance json = %#v, want idle -> running", allowed)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start second build-job returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "--json", "finish", sessionID}); err != nil {
+		t.Fatalf("advance --json finish returned error: %v", err)
+	}
+	var blocked advanceJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &blocked); err != nil {
+		t.Fatalf("blocked advance output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if blocked.Allowed || blocked.Event != "finish" || blocked.From != "idle" || len(blocked.Failed) == 0 {
+		t.Fatalf("blocked advance json = %#v, want blocked finish from idle with failed predicates", blocked)
+	}
+}
+
 func TestStatusJSONReportsAllSessions(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -642,6 +679,14 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
+}
+
+type advanceJSONTest struct {
+	Allowed bool     `json:"allowed"`
+	Event   string   `json:"event"`
+	From    string   `json:"from"`
+	To      string   `json:"to"`
+	Failed  []string `json:"failed"`
 }
 
 type statusJSONTest struct {

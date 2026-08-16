@@ -191,6 +191,16 @@ func parseStatusArgs(args []string) (jsonMode bool, session string, err error) {
 	return jsonMode, session, nil
 }
 
+type advanceJSONEntry struct {
+	Session string               `json:"session,omitempty"`
+	Allowed bool                 `json:"allowed"`
+	From    string               `json:"from"`
+	To      string               `json:"to,omitempty"`
+	Event   string               `json:"event"`
+	Failed  []string             `json:"failed,omitempty"`
+	Checks  map[string]checkJSON `json:"checks,omitempty"`
+}
+
 type statusJSONEntry struct {
 	Session      string               `json:"session"`
 	SessionState string               `json:"sessionState"`
@@ -209,6 +219,30 @@ type callStatusJSON struct {
 type checkJSON struct {
 	Result      bool `json:"result"`
 	Invocations int  `json:"invocations"`
+}
+
+func (cmd command) writeAdvanceJSON(report circuitrun.AdvanceReport) error {
+	checks := make(map[string]checkJSON, len(report.Checks))
+	for name, check := range report.Checks {
+		checks[name] = checkJSON{Result: check.LastResult, Invocations: check.Invocations}
+	}
+	entry := advanceJSONEntry{
+		Session: report.SessionID,
+		Allowed: report.Allowed,
+		From:    report.From,
+		To:      report.To,
+		Event:   report.Event,
+		Failed:  report.Failed,
+	}
+	if len(checks) > 0 {
+		entry.Checks = checks
+	}
+	output, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, string(output))
+	return nil
 }
 
 func (cmd command) writeStatusJSON(reports []circuitrun.StatusReport) error {
@@ -254,24 +288,28 @@ func callStatusJSONSliceFrom(calls []circuitb.CallStatus) []callStatusJSON {
 }
 
 func (cmd command) advance(args []string) error {
-	if len(args) < 1 || len(args) > 2 {
-		return fmt.Errorf("expected one event and optional session, got %d arguments", len(args))
+	jsonMode, event, session, err := parseAdvanceArgs(args)
+	if err != nil {
+		return err
 	}
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
 	var report circuitrun.AdvanceReport
-	if len(args) == 2 {
-		report, err = runtime.AdvanceByID(args[1], args[0])
+	if session != "" {
+		report, err = runtime.AdvanceByID(session, event)
 	} else {
-		report, err = runtime.Advance(args[0])
+		report, err = runtime.Advance(event)
 	}
 	if err != nil {
 		return err
 	}
 	if err := runtime.Suspend(); err != nil {
 		return err
+	}
+	if jsonMode {
+		return cmd.writeAdvanceJSON(report)
 	}
 	if !report.Allowed {
 		fmt.Fprintf(cmd.stdout, "blocked: Advance(%s)\n", report.Event)
@@ -284,6 +322,27 @@ func (cmd command) advance(args []string) error {
 	fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", report.From, report.To)
 	cmd.printChecks(report.Checks)
 	return nil
+}
+
+func parseAdvanceArgs(args []string) (jsonMode bool, event string, session string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if event == "" {
+				event = arg
+			} else if session == "" {
+				session = arg
+			} else {
+				return false, "", "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+		}
+	}
+	if event == "" {
+		return false, "", "", fmt.Errorf("expected one event and optional session, got %d arguments", len(args))
+	}
+	return jsonMode, event, session, nil
 }
 
 func (cmd command) unload(args []string) error {
@@ -389,7 +448,8 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  scaffold <machine>          generate missing check bindings and false stubs")
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")
-	fmt.Fprintln(cmd.stderr, "  advance <event> [session]   apply Advance(event) to a circuit session")
+	fmt.Fprintln(cmd.stderr, "  advance [--json] <event> [session]")
+	fmt.Fprintln(cmd.stderr, "                              apply Advance(event) to a circuit session")
 	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
 	fmt.Fprintln(cmd.stderr, "  unload <session>            remove a stopped circuit session")
 }
