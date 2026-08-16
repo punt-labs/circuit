@@ -79,6 +79,37 @@ func TestRunnerSingleSessionOnly(t *testing.T) {
 	}
 }
 
+func TestRunnerRepromptsAfterBlockedOperation(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"finish", "start"}}
+
+	result, err := RunUntilAccepted(runtime, backend)
+	if err != nil {
+		t.Fatalf("run until accepted: %v", err)
+	}
+	if result.Prompts != 2 {
+		t.Fatalf("prompts = %d, want 2", result.Prompts)
+	}
+	if !result.Transition.Allowed || result.Transition.From != "idle" || result.Transition.To != "running" {
+		t.Fatalf("transition = %#v, want idle -> running", result.Transition)
+	}
+	status, err := runtime.Status()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.Current != "running" {
+		t.Fatalf("current = %s, want running", status.Current)
+	}
+}
+
 func TestRunnerLoopAgainstFakePi(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
@@ -215,6 +246,21 @@ func runFakePiStep(t *testing.T, status circuitrun.StatusReport, responses map[s
 		return "", fmt.Errorf("no operation extracted from %q", lastText)
 	}
 	return operation, nil
+}
+
+type scriptedBackend struct {
+	responses []string
+	prompts   []string
+}
+
+func (backend *scriptedBackend) Prompt(message string) (string, error) {
+	backend.prompts = append(backend.prompts, message)
+	if len(backend.responses) == 0 {
+		return "", fmt.Errorf("no scripted response for prompt %d", len(backend.prompts))
+	}
+	response := backend.responses[0]
+	backend.responses = backend.responses[1:]
+	return response, nil
 }
 
 func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[string]string) {
