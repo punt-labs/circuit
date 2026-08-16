@@ -648,6 +648,35 @@ func TestBMachineUnloadStoppedSession(t *testing.T) {
 	}
 }
 
+func TestBMachineUnloadJSONReportsUnloadedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+		t.Fatalf("stop returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"unload", "--json", sessionID}); err != nil {
+		t.Fatalf("unload --json returned error: %v", err)
+	}
+	var report unloadJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("unload --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session != sessionID {
+		t.Fatalf("session = %q, want %q", report.Session, sessionID)
+	}
+	if report.SessionState != "unloaded" {
+		t.Fatalf("sessionState = %q, want unloaded", report.SessionState)
+	}
+}
+
 func TestBMachineUnloadRejectsActiveSession(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -929,6 +958,11 @@ type checkBindingJSONTest struct {
 	Variable string `json:"variable"`
 	Use      string `json:"use"`
 	Returns  string `json:"returns"`
+}
+
+type unloadJSONTest struct {
+	Session      string `json:"session"`
+	SessionState string `json:"sessionState"`
 }
 
 type statusJSONTest struct {

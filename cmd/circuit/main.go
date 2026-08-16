@@ -218,15 +218,9 @@ func (cmd command) drive(args []string) error {
 	if err != nil {
 		return err
 	}
-	backend := cmd.backend
-	var stopBackend func()
-	if backend == nil {
-		real, cleanup, launchErr := launchPiBackend(cmd.workingDir())
-		if launchErr != nil {
-			return launchErr
-		}
-		backend = real
-		stopBackend = cleanup
+	backend, stopBackend, err := cmd.agentBackend()
+	if err != nil {
+		return err
 	}
 	if stopBackend != nil {
 		defer stopBackend()
@@ -322,6 +316,13 @@ func gitStatusShort(cwd string) string {
 		return ""
 	}
 	return string(output)
+}
+
+func (cmd command) agentBackend() (circuitrpc.AgentBackend, func(), error) {
+	if cmd.backend != nil {
+		return cmd.backend, nil, nil
+	}
+	return launchPiBackend(cmd.workingDir())
 }
 
 func parseDriveArgs(args []string) (machine string, task string, err error) {
@@ -456,6 +457,11 @@ type statusJSONEntry struct {
 	Enabled      []callStatusJSON     `json:"enabled"`
 	Blocked      []callStatusJSON     `json:"blocked"`
 	Checks       map[string]checkJSON `json:"checks,omitempty"`
+}
+
+type unloadJSONEntry struct {
+	Session      string `json:"session"`
+	SessionState string `json:"sessionState"`
 }
 
 type callStatusJSON struct {
@@ -609,7 +615,7 @@ func parseAdvanceArgs(args []string) (jsonMode bool, event string, session strin
 }
 
 func (cmd command) unload(args []string) error {
-	session, err := singleArg(args)
+	jsonMode, session, err := parseUnloadArgs(args)
 	if err != nil {
 		return err
 	}
@@ -620,8 +626,22 @@ func (cmd command) unload(args []string) error {
 	if err := runtime.UnloadByID(session); err != nil {
 		return err
 	}
+	if jsonMode {
+		return cmd.writeJSON(unloadJSONEntry{Session: session, SessionState: string(circuitrun.SessionUnloaded)})
+	}
 	fmt.Fprintln(cmd.stdout, "unloaded")
 	return nil
+}
+
+func parseUnloadArgs(args []string) (jsonMode bool, session string, err error) {
+	jsonMode, session, err = parseJSONFlagWithOptionalArgument(args)
+	if err != nil {
+		return false, "", err
+	}
+	if session == "" {
+		return false, "", fmt.Errorf("expected one session argument, got %d arguments", len(args))
+	}
+	return jsonMode, session, nil
 }
 
 func (cmd command) stop(args []string) error {
@@ -746,7 +766,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  advance [--json] <event> [session]")
 	fmt.Fprintln(cmd.stderr, "                              apply Advance(event) to a circuit session")
 	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
-	fmt.Fprintln(cmd.stderr, "  unload <session>            remove a stopped circuit session")
+	fmt.Fprintln(cmd.stderr, "  unload [--json] <session>   remove a stopped circuit session")
 	fmt.Fprintln(cmd.stderr, "  drive <machine> [--task s]  run a machine end-to-end against an agent backend")
 }
 
@@ -755,11 +775,4 @@ func (cmd command) workingDir() string {
 		return cmd.cwd
 	}
 	return "."
-}
-
-func singleArg(args []string) (string, error) {
-	if len(args) != 1 {
-		return "", fmt.Errorf("expected exactly one argument, got %d", len(args))
-	}
-	return args[0], nil
 }
