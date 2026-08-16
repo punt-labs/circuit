@@ -79,6 +79,44 @@ func TestRunnerSingleSessionOnly(t *testing.T) {
 	}
 }
 
+func TestRunnerPromptIncludesGoalAndCurrentStateGuidance(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"start"}}
+	guidance := DriverGuidance{
+		Goal: "Prove goal and state guidance reach the agent.",
+		States: map[string]StateGuidance{
+			"idle": {Prompt: "Do the idle-state work before advancing.", Event: "start"},
+		},
+	}
+
+	_, err = RunUntilAcceptedWithGuidance(runtime, backend, guidance)
+	if err != nil {
+		t.Fatalf("run until accepted: %v", err)
+	}
+	if len(backend.prompts) != 1 {
+		t.Fatalf("prompts = %d, want 1", len(backend.prompts))
+	}
+	prompt := backend.prompts[0]
+	for _, want := range []string{
+		"Goal: Prove goal and state guidance reach the agent.",
+		"Current state: idle",
+		"Do the idle-state work before advancing.",
+		"When ready, request transition event: start",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
 func TestRunnerRepromptsAfterBlockedOperation(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
