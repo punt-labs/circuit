@@ -9,7 +9,7 @@ next.
 The B-machine layer worked. `tdd-flow.mch` expressed the red-green-refactor
 contract cleanly:
 
-- `spec -> red` requires `failingTestObserved = TRUE`.
+- `spec -> red` requires `not(testSuitePassed = TRUE)`.
 - `red -> green` requires `testSuitePassed = TRUE`.
 - `green -> refactoring` is an explicit choice.
 - `refactoring -> green` requires `testSuitePassed = TRUE`.
@@ -21,14 +21,16 @@ the project-local proof lived outside B:
 - `tdd-flow.mch` defines workflow facts.
 - `tdd-flow.checks.yaml` binds facts to check names.
 - `check-registry.yaml` chooses this repo's implementations.
-- `.bin/circuit-check-tdd-red` proves this repo's red-test evidence.
+- Circuit-B `not(...)` lets the machine gate on "suite is currently failing"
+  without a second BOOL variable. `.bin/circuit-check-tdd-red` remains as an
+  optional stricter red proof; it is no longer required by the machine.
 
 Session-scoped checks were necessary. Red evidence cannot live at a global path,
 because Circuit supports multiple concurrent sessions. The check now requires
 `CIRCUIT_SESSION_ID` and reads only:
 
 ```text
-.tmp/circuit/<session-id>/tdd-red.env
+.tmp/circuit/<session-id>/
 ```
 
 No fallback path is allowed. Fallbacks hide bugs and let sessions accidentally
@@ -41,7 +43,7 @@ The dogfood also found real runtime issues:
   could become enabled after a future passing test suite.
 - Blocked diagnostics were too vague (`no disjunct satisfied`). Better
   diagnostics now identify the missing condition, such as
-  `failingTestObserved = TRUE`.
+  `testSuitePassed`.
 
 ## What failed
 
@@ -148,7 +150,7 @@ Why this test:
 TDD evidence for the current workflow should be session-scoped:
 
 ```text
-.tmp/circuit/<tdd-session-id>/tdd-red.env
+.tmp/circuit/<tdd-session-id>/
 ```
 
 with:

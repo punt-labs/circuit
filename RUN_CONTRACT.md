@@ -77,7 +77,7 @@ responseContract:
 
 evidence:
   baseDir: .tmp/circuit/${sessionId}
-  redFile: .tmp/circuit/${sessionId}/tdd-red.env
+  suiteStamp: .tmp/circuit/${sessionId}/suite-green.stamp
 
 failurePolicy:
   onNoEvent: reprompt
@@ -128,7 +128,7 @@ start tdd-flow -> current state spec
 Circuit emits/uses spec goal + spec prompt
 Pi does spec work
 Pi requests writeTest
-Circuit checks failingTestObserved
+Circuit checks testSuitePassed (via not(...) in tdd-flow)
 Circuit advances spec -> red
 Circuit emits/uses red goal + red prompt
 ```

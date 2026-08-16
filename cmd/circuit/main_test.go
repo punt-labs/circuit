@@ -431,42 +431,53 @@ func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	}
 }
 
-func TestTDDFlowRequiresSessionScopedEvidenceThenAdvancesToDone(t *testing.T) {
+func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
-	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/tdd-red.env", "true")
+	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp")
 
 	if err := cmd.run([]string{"start", "tdd-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
-	stdout.Reset()
-	if err := cmd.run([]string{"advance", "writeTest"}); err != nil {
-		t.Fatalf("advance without evidence returned error: %v", err)
-	}
-	if !strings.Contains(stdout.String(), "blocked: Advance(writeTest)") {
-		t.Fatalf("advance without evidence output mismatch: %q", stdout.String())
+	stampPath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "suite-green.stamp")
+	if err := os.MkdirAll(filepath.Dir(stampPath), 0o700); err != nil {
+		t.Fatalf("create stamp dir: %v", err)
 	}
 
-	evidencePath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "tdd-red.env")
-	if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
-		t.Fatalf("create evidence dir: %v", err)
+	// With suite currently passing, spec -> red is blocked.
+	if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
+		t.Fatalf("write stamp: %v", err)
 	}
-	if err := os.WriteFile(evidencePath, []byte("session red evidence"), 0o600); err != nil {
-		t.Fatalf("write evidence: %v", err)
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "writeTest"}); err != nil {
+		t.Fatalf("advance writeTest with suite green returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "blocked: Advance(writeTest)") {
+		t.Fatalf("advance writeTest with suite green output mismatch: %q", stdout.String())
 	}
 
 	for _, step := range []struct {
-		event string
-		want  string
+		event      string
+		suiteGreen bool
+		want       string
 	}{
-		{event: "writeTest", want: "advanced: spec -> red"},
-		{event: "implement", want: "advanced: red -> green"},
-		{event: "refactor", want: "advanced: green -> refactoring"},
-		{event: "keepGreen", want: "advanced: refactoring -> green"},
-		{event: "finish", want: "advanced: green -> done"},
+		{event: "writeTest", suiteGreen: false, want: "advanced: spec -> red"},
+		{event: "implement", suiteGreen: true, want: "advanced: red -> green"},
+		{event: "refactor", suiteGreen: true, want: "advanced: green -> refactoring"},
+		{event: "keepGreen", suiteGreen: true, want: "advanced: refactoring -> green"},
+		{event: "finish", suiteGreen: true, want: "advanced: green -> done"},
 	} {
+		if step.suiteGreen {
+			if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
+				t.Fatalf("write stamp: %v", err)
+			}
+		} else {
+			if err := os.Remove(stampPath); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove stamp: %v", err)
+			}
+		}
 		stdout.Reset()
 		if err := cmd.run([]string{"advance", step.event}); err != nil {
 			t.Fatalf("advance %s returned error: %v", step.event, err)
@@ -753,9 +764,9 @@ func writeRegistry(t *testing.T, root string, command string) {
 	}
 }
 
-func writeTDDRegistry(t *testing.T, root string, failingTestCommand string, testSuiteCommand string) {
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string) {
 	t.Helper()
-	content := []byte("checks:\n  failingTestObserved:\n    kind: command\n    command: " + failingTestCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	content := []byte("checks:\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write tdd registry: %v", err)

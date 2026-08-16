@@ -7,10 +7,6 @@ checks:
     kind: command
     command: sh machines/alternating-check.sh
     returns: BOOL
-  failingTestObserved:
-    kind: command
-    command: .bin/circuit-check-tdd-red
-    returns: BOOL
   testSuitePassed:
     kind: command
     command: make check

@@ -4,24 +4,14 @@ SETS
     TRANSITION = {writeTest, implement, refactor, keepGreen, finish}
 VARIABLES
     current,
-    failingTestObserved,
     testSuitePassed
 INVARIANT
     current : STATE &
-    failingTestObserved : BOOL &
     testSuitePassed : BOOL
 INITIALISATION
     current := spec ||
-    failingTestObserved := FALSE ||
     testSuitePassed := FALSE
 OPERATIONS
-    ObserveFailingTestObserved(result) =
-        PRE
-            result : BOOL
-        THEN
-            failingTestObserved := result
-        END;
-
     ObserveTestSuitePassed(result) =
         PRE
             result : BOOL
@@ -34,7 +24,7 @@ OPERATIONS
             evt : TRANSITION &
             current /= done &
             (
-                (current = spec & evt = writeTest & failingTestObserved = TRUE) or
+                (current = spec & evt = writeTest & not(testSuitePassed = TRUE)) or
                 (current = red & evt = implement & testSuitePassed = TRUE) or
                 (current = green & evt = refactor) or
                 (current = refactoring & evt = keepGreen & testSuitePassed = TRUE) or

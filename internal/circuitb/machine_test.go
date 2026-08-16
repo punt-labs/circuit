@@ -133,10 +133,7 @@ func TestTDDFlowImplementBlockedWithoutSuite(t *testing.T) {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	// implement requires testSuitePassed = TRUE
-	// This test will fail until we verify the blocking diagnostic message
-	// includes the variable name.
-	result, err := machine.AdvanceFromWithBooleans("implement", "red", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
+	result, err := machine.AdvanceFromWithBooleans("implement", "red", map[string]bool{"testSuitePassed": false})
 	if err != nil {
 		t.Fatalf("advance implement: %v", err)
 	}
@@ -145,6 +142,34 @@ func TestTDDFlowImplementBlockedWithoutSuite(t *testing.T) {
 	}
 	if len(result.Failed) == 0 || !strings.Contains(result.Failed[0], "testSuitePassed") {
 		t.Fatalf("blocked diagnostics = %v, want testSuitePassed mention", result.Failed)
+	}
+}
+
+func TestTDDFlowUsesTestSuitePassedNegation(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
+	if err != nil {
+		t.Fatalf("load tdd-flow: %v", err)
+	}
+
+	if variables := machine.BooleanVariables(); len(variables) != 1 || variables[0] != "testSuitePassed" {
+		t.Fatalf("BooleanVariables = %v, want [testSuitePassed]", variables)
+	}
+
+	blocked, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"testSuitePassed": true})
+	if err != nil {
+		t.Fatalf("advance writeTest with passing suite: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("writeTest allowed while test suite is passing")
+	}
+
+	allowed, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"testSuitePassed": false})
+	if err != nil {
+		t.Fatalf("advance writeTest with failing suite: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "red" {
+		t.Fatalf("writeTest with failing suite = %#v, want red", allowed)
 	}
 }
 
@@ -201,35 +226,27 @@ END
 	}
 }
 
-func TestTDDFlowBooleanPreconditions(t *testing.T) {
+func TestTDDFlowFinishBlockedWithoutSuite(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))
 	if err != nil {
 		t.Fatalf("load tdd-flow: %v", err)
 	}
 
-	blocked, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"failingTestObserved": false, "testSuitePassed": false})
+	blocked, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": false})
 	if err != nil {
-		t.Fatalf("advance writeTest with false failing test: %v", err)
+		t.Fatalf("advance finish with failing suite: %v", err)
 	}
 	if blocked.Allowed {
-		t.Fatal("writeTest allowed before failing test observed")
+		t.Fatal("finish allowed while test suite is failing")
 	}
 
-	allowed, err := machine.AdvanceFromWithBooleans("writeTest", "spec", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
+	allowed, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"testSuitePassed": true})
 	if err != nil {
-		t.Fatalf("advance writeTest with true failing test: %v", err)
+		t.Fatalf("advance finish with passing suite: %v", err)
 	}
-	if !allowed.Allowed || allowed.To != "red" {
-		t.Fatalf("writeTest with failing test = %#v, want red", allowed)
-	}
-
-	blockedFinish, err := machine.AdvanceFromWithBooleans("finish", "green", map[string]bool{"failingTestObserved": true, "testSuitePassed": false})
-	if err != nil {
-		t.Fatalf("advance finish with false suite: %v", err)
-	}
-	if blockedFinish.Allowed {
-		t.Fatal("finish allowed before test suite passed")
+	if !allowed.Allowed || allowed.To != "done" {
+		t.Fatalf("finish with passing suite = %#v, want done", allowed)
 	}
 }
 

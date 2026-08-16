@@ -151,7 +151,13 @@ func TestRunnerRepromptsAfterBlockedOperation(t *testing.T) {
 func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	writeTDDRegistry(t, root, "true", "true")
+	stateDir := filepath.Join(root, ".tmp")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("create state dir: %v", err)
+	}
+	statePath := filepath.Join(stateDir, "tdd-suite.state")
+	script := "if [ -f " + statePath + " ]; then exit 0; else touch " + statePath + "; exit 1; fi"
+	writeTDDRegistry(t, root, script)
 	runtime, err := circuitrun.Resume(root)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -350,9 +356,9 @@ func (backend *scriptedBackend) Prompt(message string) (string, error) {
 	return response, nil
 }
 
-func writeTDDRegistry(t *testing.T, root string, failingTestCommand string, testSuiteCommand string) {
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string) {
 	t.Helper()
-	content := []byte("checks:\n  failingTestObserved:\n    kind: command\n    command: " + failingTestCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	content := []byte("checks:\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write tdd registry: %v", err)
