@@ -150,7 +150,7 @@ func (cmd command) scaffold(args []string) error {
 }
 
 func (cmd command) start(args []string) error {
-	machine, err := singleArg(args)
+	jsonMode, machine, err := parseStartArgs(args)
 	if err != nil {
 		return err
 	}
@@ -165,10 +165,31 @@ func (cmd command) start(args []string) error {
 	if err := runtime.Suspend(); err != nil {
 		return err
 	}
+	if jsonMode {
+		return cmd.writeStartJSON(report)
+	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
 	cmd.printStatusReport(report)
 	return nil
+}
+
+func parseStartArgs(args []string) (jsonMode bool, machine string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if machine != "" {
+				return false, "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			machine = arg
+		}
+	}
+	if machine == "" {
+		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
+	}
+	return jsonMode, machine, nil
 }
 
 func (cmd command) drive(args []string) error {
@@ -457,6 +478,15 @@ func (cmd command) writeAdvanceJSON(report circuitrun.AdvanceReport) error {
 		entry.Checks = checks
 	}
 	output, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, string(output))
+	return nil
+}
+
+func (cmd command) writeStartJSON(report circuitrun.StatusReport) error {
+	output, err := json.MarshalIndent(statusJSONEntryFrom(report), "", "  ")
 	if err != nil {
 		return err
 	}

@@ -107,6 +107,29 @@ func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	}
 }
 
+func TestBMachineStartJSONReportsStartedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "--json", "build-job"}); err != nil {
+		t.Fatalf("start --json returned error: %v", err)
+	}
+	var report statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("start --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session == "" {
+		t.Fatalf("start --json missing session id: %#v", report)
+	}
+	if report.SessionState != "active" || report.Machine != "build-job" || report.Current != "idle" {
+		t.Fatalf("start --json report = %#v, want active build-job at idle", report)
+	}
+	if len(report.Enabled) == 0 || len(report.Blocked) == 0 {
+		t.Fatalf("start --json missing operations: %#v", report)
+	}
+}
+
 func TestAdvanceJSONReportsAllowedAndBlockedTransitions(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
