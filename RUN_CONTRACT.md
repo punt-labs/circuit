@@ -1,257 +1,211 @@
-# Run contract sketch
+# Run contract
 
-This is a working note, not a settled ADR.
+This note describes what Circuit needs beyond the B machine when Circuit is
+driving an agent backend. It reflects what the `tdd-flow` dogfood work actually
+produced, not just the earlier sketch.
 
-The current intuition is that Circuit has a pure machine and local checks, but
-when Circuit drives an agent it also needs a run contract. The run contract is
-not the machine. The machine is still the formal source of truth for states,
-transitions, and guards. The contract tells Circuit what concrete work should
-happen while the machine is in a state.
+## The three companion files
 
-A useful way to think about it:
+Each machine can ship up to three data files. All are optional except when the
+machine references them.
 
 ```text
-B machine:
-  what states exist
-  what transitions exist
-  what facts must hold for transitions
-
-checks.yaml / check-registry.yaml:
-  how external boolean facts are observed
-
-run contract:
-  what goal/prompt applies while in each state
-  what the agent should do before requesting the next transition
+machines/<name>.mch            formal workflow (states, transitions, guards)
+machines/<name>.checks.yaml    binds B BOOL variables to check names
+machines/<name>.prompts.yaml   binds B states to driver prompts
 ```
 
-So the contract may be parallel to check bindings. Checks attach outside-world
-truth to B variables. State prompts attach outside-world work instructions to B
-states.
+The B machine stays universal. Project-specific behavior lives in the check
+registry and prompt file.
 
-## Possible shape
+## Analogy
 
-A contract might look roughly like this:
+```text
+B BOOL variable -> check binding
+B state         -> prompt binding
+```
+
+Checks answer "what fact must be true for this transition to fire?"
+State prompts answer "what should the driven agent do while we are here?"
+
+## Minimal shape used in Circuit today
+
+### `.checks.yaml`
 
 ```yaml
-machine: tdd-flow
-name: tdd-slice
-
-goal: >
-  Deliver one TDD slice for a concrete product task. The machine owns the
-  workflow; the agent may only request progress through enabled transitions.
-
-stateGoals:
-  spec: >
-    Establish the failing test for this slice.
-  red: >
-    Make the failing test pass with the smallest implementation.
-  green: >
-    Decide whether the slice is done or needs refactoring.
-  refactoring: >
-    Improve the implementation while keeping checks green.
-
-statePrompts:
-  spec: >
-    You are in the spec phase. Write the failing test for the slice and create
-    the session-scoped red evidence file. Do not implement production code.
-    When the red test is proven, request event writeTest.
-
-  red: >
-    You are in the red phase. Implement the smallest code change that makes the
-    failing test pass. Do not refactor or broaden scope. When the suite is
-    green, request event implement.
-
-  green: >
-    You are in the green phase. If the slice is complete, request event finish.
-    If cleanup is needed, request event refactor.
-
-  refactoring: >
-    You are in the refactoring phase. Improve structure without changing
-    behavior. When checks are green, request event keepGreen.
-
-responseContract:
-  format: event-name
-  rule: >
-    At the end of the turn, respond with exactly one transition event name that
-    Circuit can validate. Do not claim progress outside a successful transition.
-
-evidence:
-  baseDir: .tmp/circuit/${sessionId}
-  suiteStamp: .tmp/circuit/${sessionId}/suite-green.stamp
-
-failurePolicy:
-  onNoEvent: reprompt
-  onBlocked: reprompt
-  maxAttemptsPerState: 3
+checks:
+  testSuitePassed:
+    use: testSuitePassed
+  codeQualityPassed:
+    use: codeQualityPassed
 ```
 
-This is only a sketch. The important idea is that the contract gives Circuit a
-state-indexed instruction layer without changing the B machine.
+### `check-registry.yaml`
 
-## Goal and prompt per state
+```yaml
+checks:
+  testSuitePassed:
+    kind: command
+    command: make check
+    returns: BOOL
+  codeQualityPassed:
+    kind: command
+    command: make check-go-quality
+    returns: BOOL
+```
 
-The user suggestion seems right: each state probably wants both a goal and a
-prompt.
+### `.prompts.yaml`
 
-The state goal is stable and short:
+```yaml
+states:
+  spec:
+    prompt: >
+      Write the failing test for the task. Do not implement production code.
+      When the targeted test is failing, request the transition event.
+    event: writeTest
+  red:
+    prompt: >
+      Implement the smallest code change that makes the failing test pass. Do
+      not refactor or broaden scope. When the full check passes, request the
+      transition event.
+    event: implement
+  green:
+    prompt: >
+      The slice is green. Request the transition event to run code quality
+      review before deciding finish or refactor.
+    event: reviewQuality
+  qualityReview:
+    prompt: >
+      Circuit has checked code quality. If the quality gate passes, request
+      finish. If the quality gate fails, request refactor.
+  refactoring:
+    prompt: >
+      Refactor only to satisfy the code quality gate while preserving behavior.
+      Use standard refactorings when they apply: Extract Function, Extract Type,
+      Extract Helper, Rename for clarity, consolidate duplicate conditionals,
+      and move repeated mapping logic into one place. When tests pass again,
+      request the transition event.
+    event: keepGreen
+```
+
+## What the driver adds at run time
+
+The user only supplies:
 
 ```text
-spec goal: establish a failing test
-red goal: make it pass
-green goal: decide done or refactor
-refactoring goal: clean up while green
+machine
+task string
 ```
 
-The state prompt is operational and may include the concrete task, evidence
-paths, allowed edits, and response instructions.
+Circuit supplies at each turn:
 
-This mirrors checks:
+- current state
+- enabled and blocked operations
+- session id
+- state guidance (goal + prompt + expected event) from the prompts file
+- the overall task string
+
+The prompt Pi sees combines Circuit status output, the overall task, and the
+state-specific prompt.
+
+## Response contract
+
+The agent backend is expected to respond with exactly one transition event
+name. Circuit extracts the requested event and validates it against the
+machine. Circuit runs checks and either accepts or blocks the transition. When
+blocked, Circuit re-prompts the same state up to a bounded number of attempts.
+
+Pi does not decide progress. Circuit does.
+
+## Evidence
+
+Session-scoped paths are the standard. For `tdd-flow` and any similar workflow:
 
 ```text
-B boolean variable -> bound check command
-B state            -> bound goal/prompt
+.tmp/circuit/<session-id>/
 ```
 
-Checks answer: what must be true for this transition?
-
-State prompts answer: what should the driven agent do while we are here?
-
-## When prompts appear
-
-A state prompt should appear whenever Circuit enters or remains in a state and
-is about to drive an agent turn.
-
-For example:
+Check scripts must not read global evidence paths. Multiple concurrent sessions
+must not share evidence. Circuit passes:
 
 ```text
-start tdd-flow -> current state spec
-Circuit emits/uses spec goal + spec prompt
-Pi does spec work
-Pi requests writeTest
-Circuit checks testSuitePassed (via not(...) in tdd-flow)
-Circuit advances spec -> red
-Circuit emits/uses red goal + red prompt
+CIRCUIT_SESSION_ID
+CIRCUIT_MACHINE_NAME
+CIRCUIT_MACHINE_FILE
+CIRCUIT_CURRENT_STATE
 ```
 
-If Pi proposes a blocked event or no event, Circuit stays in the same state and
-reuses the same state's prompt, probably augmented with the failure reason.
+into every check command's environment.
 
-So a state prompt is not a transition action in B. It is a driver-side behavior
-triggered by the current state.
+## Trace
 
-## Closed and open parts
-
-The closed parts should be:
+`circuit drive` writes:
 
 ```text
-B evaluator
-session lifecycle
-check invocation semantics
-driver loop skeleton
-backend prompt/response transport
+.tmp/circuit/<session-id>/drive.jsonl
 ```
 
-These should not change when we add TDD, PR review, release, or other workflows.
+Trace events:
 
-The open parts should be:
+- `prompt`: text sent to the backend
+- `response`: text returned by the backend
+- `workspace`: git status short after the response
+- `advance`: transition result
 
-```text
-machines
-run contracts
-state goals
-state prompts
-response extractors
-agent backends
-check implementations
-evidence formats
-failure policies
-approval policies
-```
+The trace is what makes dogfood evaluable. Without it we could only see final
+diffs and final check states, which was not enough to distinguish real TDD from
+production-code changes that happened to fail `make check`.
 
-That is the open/closed split.
+## What Circuit itself does not know
 
-## Liskov-style substitution
+Circuit does not know:
 
-The driver should depend on small behavioral interfaces.
+- which specific test file corresponds to a slice
+- which tools count as "code quality"
+- what standard refactorings apply in a language
+- what the human considers done
 
-An agent backend is substitutable if:
+Those live in project-local scripts, the check registry, the prompt file, and
+the task string.
 
-```text
-Prompt(string) -> response string or transport error
-it does not mutate Circuit state directly
-it does not decide progress
-```
+## Substitution boundaries
 
-A prompt strategy is substitutable if:
+Any project or workflow can substitute its own implementations, as long as the
+contracts hold:
 
-```text
-status + contract -> prompt
-it reflects the current machine state
-it does not invent transitions
-```
+- A B machine that references a BOOL variable requires a check binding for it.
+- A check binding requires a registry entry that returns BOOL.
+- A check command returns 0 for TRUE and non-zero for FALSE.
+- A prompt file maps states to prompts and optionally to expected event names.
+- An agent backend implements `Prompt(message string) (response string, err)`.
 
-A response extractor is substitutable if:
+Different repositories may:
 
-```text
-response + status + contract -> requested event or no event
-it does not turn arbitrary prose into progress
-```
+- ship different machines
+- point `testSuitePassed` at any command that returns BOOL
+- point `codeQualityPassed` at any command that returns BOOL
+- provide different prompt files for the same machine
+- provide different agent backends (real Pi, fake Pi, other CLI agents)
 
-A check implementation is substitutable if:
+The Circuit core does not change.
 
-```text
-exit 0 means TRUE
-nonzero means FALSE
-session-specific evidence is scoped by session id
-```
+## What dogfood confirmed
 
-The driver loop can then stay generic.
+- The user only needs `machine + task`.
+- Circuit runs the workflow.
+- Pi does the work.
+- Checks decide truth.
+- Refactoring becomes real when it is required to satisfy `codeQualityPassed`.
+- Traces are needed to see what actually happened.
+- Environment issues (like missing `.pi/node_modules`) can silently corrupt a
+  run; smoke workflows must include workspace preparation, not only building
+  the binary.
 
-## Driver loop sketch
+## What is still open
 
-```text
-for session while active:
-  status = circuit.status(session)
-  contractState = contract.state[status.current]
-  prompt = render(contract.goal, contractState.goal, contractState.prompt, status)
-  response = backend.prompt(prompt)
-  event = extractor.extract(response, status, contract)
-  if no event:
-    reprompt according to failurePolicy
-    continue
-  result = circuit.advance(event, session)
-  if blocked:
-    reprompt with blocked reason
-    continue
-  if terminal:
-    stop
-```
-
-This is the part that should become closed once designed.
-
-## How this relates to Pi -> Circuit -> Pi
-
-Outer Pi or the user supplies the slice:
-
-```text
-/circuit:tdd "Add load --json"
-```
-
-Circuit starts or attaches to the machine session and loads the run contract.
-
-Circuit then drives inner Pi with the state prompt. Inner Pi does work and
-requests transitions. Circuit validates. Inner Pi does not decide truth.
-
-That is the direction that seems most on track right now.
-
-## Open questions
-
-- Is the contract keyed only by state, or by state plus transition?
-- Does each state have one prompt, or multiple possible prompts based on enabled
-  operations?
-- Should response format be plain event names first, or structured JSON from the
-  start?
-- How much tool policy belongs in the contract versus in the backend launcher?
-- Should check evidence conventions live in the run contract, or only in local
-  check scripts?
-- How does the outer human approve or interrupt between states?
+- A first-class prompt override mechanism (currently done by editing the prompt
+  file in a worktree).
+- Structured/typed trace events instead of ad-hoc JSON maps.
+- Optional stricter red proof beyond `not(testSuitePassed = TRUE)`.
+- Outer Pi UX (`/circuit:tdd <slice>`) wrapping `circuit drive tdd-flow`.
+- More Go quality tools once the initial three prove stable.

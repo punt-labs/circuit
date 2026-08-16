@@ -1,163 +1,198 @@
 # Reflections
 
-This file records what the `tdd-flow` dogfood session taught us about Circuit,
-where the current integration helped, where it failed, and what test should come
-next.
+This file records what the `tdd-flow` dogfood work taught us about Circuit,
+Circuit-driven Pi, TDD slice delivery, observability, and quality gates.
 
 ## What worked
 
-The B-machine layer worked. `tdd-flow.mch` expressed the red-green-refactor
-contract cleanly:
+The B-machine layer held up. The machine stayed simple and formal while the
+project-specific behavior lived outside B:
 
-- `spec -> red` requires `not(testSuitePassed = TRUE)`.
-- `red -> green` requires `testSuitePassed = TRUE`.
-- `green -> qualityReview` requires `testSuitePassed = TRUE`.
-- `qualityReview -> done` requires `codeQualityPassed = TRUE`.
-- `qualityReview -> refactoring` requires `not(codeQualityPassed = TRUE)`.
-- `refactoring -> green` requires `testSuitePassed = TRUE`.
+- `tdd-flow.mch` defines states, transitions, and abstract BOOL facts.
+- `tdd-flow.checks.yaml` binds B facts to check names.
+- `check-registry.yaml` maps check names to this repo's commands.
+- `tdd-flow.prompts.yaml` maps B states to driver prompts.
 
-The check-binding design also held up. The machine stayed universal and pure;
-the project-local proof lived outside B:
-
-- `tdd-flow.mch` defines workflow facts.
-- `tdd-flow.checks.yaml` binds facts to check names.
-- `check-registry.yaml` chooses this repo's implementations.
-- Circuit-B `not(...)` lets the machine gate on "suite is currently failing"
-  without a second BOOL variable. `.bin/circuit-check-tdd-red` remains as an
-  optional stricter red proof; it is no longer required by the machine.
-
-Session-scoped checks were necessary. Red evidence cannot live at a global path,
-because Circuit supports multiple concurrent sessions. The check now requires
-`CIRCUIT_SESSION_ID` and reads only:
+The final useful TDD shape is:
 
 ```text
-.tmp/circuit/<session-id>/
+spec -> red -> green -> qualityReview -> done
+                         qualityReview -> refactoring -> green
 ```
 
-No fallback path is allowed. Fallbacks hide bugs and let sessions accidentally
-share evidence.
+with two distinct gates:
 
-The dogfood also found real runtime issues:
+- `testSuitePassed`
+- `codeQualityPassed`
 
-- Externally gated states were incorrectly treated as terminal when all current
-  checks were false. That stopped `tdd-flow` at `red`, even though `implement`
-  could become enabled after a future passing test suite.
-- Blocked diagnostics were too vague (`no disjunct satisfied`). Better
-  diagnostics now identify the missing condition, such as
-  `testSuitePassed`.
+That distinction matters. Test green and code-quality green are not the same
+fact.
 
-## What failed
+## Important design changes discovered by dogfood
 
-The agent did not reliably use Circuit just because context was injected.
+### `not(...)` belongs in Circuit-B
 
-The session repeatedly showed the same failure mode:
-
-1. Circuit state was visible.
-2. The correct transition was available or blocked.
-3. The agent still drifted into ordinary coding behavior.
-4. The human had to remind the agent to use `circuit_advance`.
-
-That means Pi-hosted Circuit is useful but not sufficient. Context injection and
-LLM tools inform the agent, but they do not enforce the workflow. The missing
-piece is not another reminder. The missing piece is a driver that makes the
-machine the authority for each work turn.
-
-## Architecture insight
-
-The likely next architecture is not only "Pi hosts Circuit" or only "Circuit
-drives Pi". The stronger shape is:
+TDD red is naturally expressed as:
 
 ```text
-Pi -> Circuit -> Pi
+not(testSuitePassed = TRUE)
 ```
 
-The outer Pi remains the human interaction surface. A command such as
-`/circuit:tdd <task>` starts a Circuit-governed workflow. Circuit then drives an
-inner Pi process over RPC for constrained work turns. The inner Pi performs one
-state-appropriate slice of work, but Circuit validates whether progress is real.
+Adding parenthesized `not(...)` simplified `tdd-flow` and removed the need for a
+mandatory `failingTestObserved` B variable. Targeted red proof may still be
+useful, but it is stricter evidence layered outside the machine, not required by
+the formal workflow.
 
-In that shape:
+### Externally gated states are not terminal
 
-- Outer Pi is the human UX.
-- Circuit is the workflow authority.
-- Inner Pi is the replaceable agent runner.
+A state with no currently enabled transitions is not necessarily terminal. If a
+future check result can enable a transition, the session must remain active.
+This mattered for `red`, where `implement` is blocked until tests pass.
 
-This gives enforcement instead of suggestion.
+### Refactoring must be connected to code quality
 
-## UX implication
-
-The raw primitives are too low-level for the desired behavior. The operator
-should not have to manually say "use Circuit" at each phase.
-
-A better TDD UX is something like:
+A soft prompt asking the agent to consider refactoring was not enough. The better
+machine shape makes refactoring the path required when code quality fails:
 
 ```text
-/circuit:tdd add status --json
+qualityReview -> done        requires codeQualityPassed = TRUE
+qualityReview -> refactoring requires not(codeQualityPassed = TRUE)
 ```
 
-or a direct tool equivalent. It should:
+This worked in practice. Once `make check-go-quality` failed, the driven Pi loop
+entered repeated `refactoring -> green -> qualityReview` cycles until the quality
+gate passed.
 
-1. Start a `tdd-flow` session.
-2. Create the session-scoped evidence directory.
-3. Drive the agent according to the current state.
-4. Require red evidence before `writeTest`.
-5. Require green checks before `implement`, `keepGreen`, and `finish`.
-6. Re-prompt or reject when the agent attempts state-inappropriate work.
+## Circuit-driven Pi worked
 
-## Test to try next
-
-The next test should exercise the circuit-drives-pi path, still using TDD. The
-smallest useful test is not a full production `/circuit:tdd` command yet. It
-is a fake-pi integration test proving that Circuit stays in control when the agent
-misbehaves.
-
-Proposed red test:
+The useful architecture is:
 
 ```text
-TestRunnerRepromptsAfterBlockedOperation
+outer Pi or human -> Circuit -> inner Pi
 ```
 
-Package:
+Circuit owns the workflow. Pi performs work and requests transition events.
+Circuit validates the requested transition and check results.
+
+We now have:
+
+- `PiRPCBackend`
+- `RunGuidedSession`
+- `circuit drive <machine> --task ...`
+- machine-local prompt files such as `machines/tdd-flow.prompts.yaml`
+- real `make smoke-drive` coverage for Circuit driving Pi through `build-job`
+
+The driven TDD slices delivered real `--json` work.
+
+## Prompt files should be data, not code
+
+Hardcoding machine-specific guidance in the CLI was the wrong direction. The
+right shape is a companion file:
 
 ```text
-./internal/circuitrpc
+machines/<machine>.prompts.yaml
 ```
 
-Scenario:
-
-1. Start `build-job` in `idle`.
-2. Fake Pi first responds with blocked operation `finish`.
-3. Circuit must reject it without advancing state.
-4. Circuit must send a second prompt for the same `idle` state.
-5. Fake Pi then responds with valid operation `start`.
-6. Circuit advances `idle -> running`.
-
-Expected assertion:
+This mirrors check bindings:
 
 ```text
-prompts sent: 2
-first state after blocked response: idle
-accepted transition: idle -> running
+B boolean -> check binding
+B state   -> prompt binding
 ```
 
-Why this test:
+Circuit stays generic. Machines, prompts, and checks are open for extension.
 
-- It directly targets process enforcement.
-- It uses the existing circuit-drives-pi spike surface.
-- It proves the agent cannot make progress by proposing a blocked transition.
-- It moves us from passive context injection toward an actual machine-governed
-  runner loop.
+## Observability was essential
 
-TDD evidence for the current workflow should be session-scoped:
+Before tracing, we could see only final diffs and final check state. That was not
+enough to know whether Pi actually followed TDD.
+
+`circuit drive` now writes:
 
 ```text
-.tmp/circuit/<tdd-session-id>/
+.tmp/circuit/<session-id>/drive.jsonl
 ```
 
-with:
+The trace records:
+
+- prompt text
+- Pi response text
+- workspace status after each Pi turn
+- transition advances
+
+This changed the discussion. It showed when Pi wrote only a test, when it wrote
+production code, when it chose `finish`, and when it chose `refactor`.
+
+## Worktree setup matters
+
+One TDD smoke failed for a misleading reason: the fresh worktree did not have
+`.pi/node_modules`, so `make check` failed before Pi did anything useful. That
+made `not(testSuitePassed = TRUE)` true for the wrong reason.
+
+Lesson: Circuit-driven smoke tests need a prepared worktree. Otherwise check
+failures may reflect environment setup, not agent work.
+
+## What the `--json` dogfood delivered
+
+The current command surface now has JSON output for:
+
+- `list --json`
+- `load --json`
+- `scaffold --json`
+- `start --json`
+- `status --json`
+- `advance --json`
+- `stop --json`
+- `unload --json`
+
+The later slices were delivered by real Circuit-driven Pi runs and then applied
+back to the main branch after `make check` passed.
+
+## Code quality gate lessons
+
+A `codeQualityPassed` fact is useful only if it has real teeth.
+
+The first structural quality gate was calibrated for testing, not final policy:
 
 ```text
-TDD_PACKAGE=./internal/circuitrpc
-TDD_RUN=TestRunnerRepromptsAfterBlockedOperation
-TDD_EXPECTED_FAIL=TestRunnerRepromptsAfterBlockedOperation
+dupl threshold: 100
+gocognit min-complexity: 20
+funlen statements: 40
+funlen lines: 70
+```
+
+This produced a small failing set:
+
+```text
+dupl: 2
+funlen: 2
+gocognit: 2
+```
+
+After the driven refactor loop, `make check-go-quality` passed.
+
+This confirms the mechanism: code-quality failure can force refactoring loops.
+The exact thresholds and tools can be tightened later.
+
+## Current remaining questions
+
+- How strict should TDD red proof be beyond `not(testSuitePassed = TRUE)`?
+- Should `drive.jsonl` capture check command stdout/stderr, not only boolean
+  check results?
+- Should prompt overrides be first-class input for a single run rather than
+  editing `machines/tdd-flow.prompts.yaml` in a worktree?
+- Should `/circuit:tdd <slice>` in outer Pi wrap `circuit drive tdd-flow`?
+- Should `check-go-quality` include more tools after dupl/gocognit/funlen?
+
+## Current conclusion
+
+Circuit is useful when it is the middle authority, not merely context injected
+into the agent. The strongest pattern so far is:
+
+```text
+human chooses slice
+Circuit drives Pi through tdd-flow
+checks decide progress
+quality gate forces refactoring
+trace proves what happened
 ```
