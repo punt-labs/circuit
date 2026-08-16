@@ -34,7 +34,7 @@ set -e
 
 [ "$status" -ne 0 ] || fail "expected red test passed: $expected_fail"
 
-printf '%s\n' "$output" | grep -qF "--- FAIL: $expected_fail" || {
+printf '%s\n' "$output" | grep -qF -- "--- FAIL: $expected_fail" || {
 	printf '%s\n' "$output" >&2
 	fail "test failed but not at expected target: $expected_fail"
 }

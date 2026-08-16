@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +81,48 @@ func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
 		t.Fatalf("start error = %v, want unbound BOOL variable", err)
 	}
+}
+
+func TestStatusJSONReportsAllSessions(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start first build-job: %v", err)
+	}
+	first := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "start", first}); err != nil {
+		t.Fatalf("advance first start: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start second build-job: %v", err)
+	}
+	second := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "start", second}); err != nil {
+		t.Fatalf("advance second start: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "finish", second}); err != nil {
+		t.Fatalf("advance second finish: %v", err)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"status", "--json"}); err != nil {
+		t.Fatalf("status --json returned error: %v", err)
+	}
+	var reports []statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatalf("status --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if len(reports) != 2 {
+		t.Fatalf("json report count = %d, want 2: %#v", len(reports), reports)
+	}
+	assertStatusJSON(t, reports, first, "active", "running")
+	assertStatusJSON(t, reports, second, "stopped", "done")
 }
 
 func TestBMachineStartStatusAdvance(t *testing.T) {
@@ -599,6 +642,39 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
+}
+
+type statusJSONTest struct {
+	Session      string               `json:"session"`
+	SessionState string               `json:"sessionState"`
+	Machine      string               `json:"machine"`
+	Current      string               `json:"current"`
+	Enabled      []callStatusJSONTest `json:"enabled"`
+	Blocked      []callStatusJSONTest `json:"blocked"`
+}
+
+type callStatusJSONTest struct {
+	Call   string   `json:"call"`
+	Failed []string `json:"failed"`
+}
+
+func assertStatusJSON(t *testing.T, reports []statusJSONTest, session string, state string, current string) {
+	t.Helper()
+	for _, report := range reports {
+		if report.Session == session {
+			if report.SessionState != state || report.Current != current {
+				t.Fatalf("status for %s = %s/%s, want %s/%s", session, report.SessionState, report.Current, state, current)
+			}
+			if report.Machine != "build-job" {
+				t.Fatalf("machine for %s = %s, want build-job", session, report.Machine)
+			}
+			if len(report.Enabled) == 0 && len(report.Blocked) == 0 {
+				t.Fatalf("status for %s missing operations: %#v", session, report)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing status for session %s in %#v", session, reports)
 }
 
 func extractSessionID(t *testing.T, output string) string {

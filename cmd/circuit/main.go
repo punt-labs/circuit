@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 
+	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
 
@@ -140,31 +142,115 @@ func (cmd command) start(args []string) error {
 }
 
 func (cmd command) status(args []string) error {
-	if len(args) > 1 {
-		return fmt.Errorf("expected at most one argument, got %d", len(args))
+	jsonMode, session, err := parseStatusArgs(args)
+	if err != nil {
+		return err
 	}
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
+	if session != "" {
+		report, err := runtime.StatusByID(session)
+		if err != nil {
+			return err
+		}
+		if jsonMode {
+			return cmd.writeStatusJSON([]circuitrun.StatusReport{report})
+		}
+		cmd.printStatusReport(report)
+		return runtime.Suspend()
+	}
 	reports, err := runtime.StatusAll()
 	if err != nil {
 		return err
+	}
+	if jsonMode {
+		return cmd.writeStatusJSON(reports)
 	}
 	if len(reports) == 0 {
 		fmt.Fprintln(cmd.stdout, "no session")
 		return nil
 	}
-	if len(args) == 1 {
-		report, err := runtime.StatusByID(args[0])
-		if err != nil {
-			return err
-		}
-		cmd.printStatusReport(report)
-		return runtime.Suspend()
-	}
 	cmd.printStatusReports(reports)
 	return runtime.Suspend()
+}
+
+func parseStatusArgs(args []string) (jsonMode bool, session string, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		default:
+			if session != "" {
+				return false, "", fmt.Errorf("unexpected argument: %s", arg)
+			}
+			session = arg
+		}
+	}
+	return jsonMode, session, nil
+}
+
+type statusJSONEntry struct {
+	Session      string               `json:"session"`
+	SessionState string               `json:"sessionState"`
+	Machine      string               `json:"machine"`
+	Current      string               `json:"current"`
+	Enabled      []callStatusJSON     `json:"enabled"`
+	Blocked      []callStatusJSON     `json:"blocked"`
+	Checks       map[string]checkJSON `json:"checks,omitempty"`
+}
+
+type callStatusJSON struct {
+	Call   string   `json:"call"`
+	Failed []string `json:"failed,omitempty"`
+}
+
+type checkJSON struct {
+	Result      bool `json:"result"`
+	Invocations int  `json:"invocations"`
+}
+
+func (cmd command) writeStatusJSON(reports []circuitrun.StatusReport) error {
+	entries := make([]statusJSONEntry, 0, len(reports))
+	for _, report := range reports {
+		entries = append(entries, statusJSONEntryFrom(report))
+	}
+	output, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.stdout, string(output))
+	return nil
+}
+
+func statusJSONEntryFrom(report circuitrun.StatusReport) statusJSONEntry {
+	enabled := callStatusJSONSliceFrom(report.Enabled)
+	blocked := callStatusJSONSliceFrom(report.Blocked)
+	checks := make(map[string]checkJSON, len(report.Checks))
+	for name, check := range report.Checks {
+		checks[name] = checkJSON{Result: check.LastResult, Invocations: check.Invocations}
+	}
+	entry := statusJSONEntry{
+		Session:      report.SessionID,
+		SessionState: string(report.SessionState),
+		Machine:      report.MachineName,
+		Current:      report.Current,
+		Enabled:      enabled,
+		Blocked:      blocked,
+	}
+	if len(checks) > 0 {
+		entry.Checks = checks
+	}
+	return entry
+}
+
+func callStatusJSONSliceFrom(calls []circuitb.CallStatus) []callStatusJSON {
+	result := make([]callStatusJSON, 0, len(calls))
+	for _, call := range calls {
+		result = append(result, callStatusJSON{Call: call.Call, Failed: call.Failed})
+	}
+	return result
 }
 
 func (cmd command) advance(args []string) error {
@@ -302,7 +388,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  load <machine>              validate machine and check bindings")
 	fmt.Fprintln(cmd.stderr, "  scaffold <machine>          generate missing check bindings and false stubs")
 	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
-	fmt.Fprintln(cmd.stderr, "  status [session]            print circuit session status")
+	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")
 	fmt.Fprintln(cmd.stderr, "  advance <event> [session]   apply Advance(event) to a circuit session")
 	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
 	fmt.Fprintln(cmd.stderr, "  unload <session>            remove a stopped circuit session")
