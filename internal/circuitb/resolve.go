@@ -140,6 +140,8 @@ func (resolver *resolver) resolvePredicate(raw rawPredicate) predicate {
 		return comparisonPredicate{operator: predicate.Operator, left: resolver.resolveExpression(predicate.Left), right: resolver.resolveExpression(predicate.Right)}
 	case rawMembershipPredicate:
 		return membershipPredicate{element: resolver.resolveExpression(predicate.Element), set: resolver.resolveSetExpression(predicate.Set)}
+	case rawNotPredicate:
+		return notPredicate{inner: resolver.resolvePredicate(predicate.Inner)}
 	}
 	resolver.diagnostics = append(resolver.diagnostics, Diagnostic{Span: raw.predicateSpan(), Message: "unsupported predicate"})
 	return comparisonPredicate{operator: "=", left: numberExpression{}, right: numberExpression{}}

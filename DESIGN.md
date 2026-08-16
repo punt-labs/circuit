@@ -44,6 +44,12 @@ Circuit accepts only the profile.
 - The profile must remain small enough that the Go evaluator can be
   trusted without a formal proof of its own.
 
+**Profile expansions accepted:**
+
+- `not(<predicate>)`: parenthesised boolean negation. Enables workflows that
+  need to gate on the negation of an observed BOOL fact (for example, TDD `spec
+  -> red` requires `not(testSuitePassed = TRUE)`).
+
 ## ADR 3: Multi-pass parser architecture
 
 **Decision:** The Circuit-B parser uses four explicit passes: lex/parse,

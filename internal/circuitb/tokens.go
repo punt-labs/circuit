@@ -19,6 +19,7 @@ const (
 	tokenElse
 	tokenEnd
 	tokenOr
+	tokenNot
 	tokenAny
 	tokenColon
 	tokenSemicolon
@@ -73,6 +74,8 @@ func keywordType(value string) (tokenType, bool) {
 		return tokenEnd, true
 	case "or":
 		return tokenOr, true
+	case "not":
+		return tokenNot, true
 	case "ANY":
 		return tokenAny, true
 	}

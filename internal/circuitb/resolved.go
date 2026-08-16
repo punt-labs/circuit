@@ -63,6 +63,10 @@ type membershipPredicate struct {
 	set     setExpression
 }
 
+type notPredicate struct {
+	inner predicate
+}
+
 type expression interface {
 	evaluate(values map[string]value, bindings map[string]value) value
 	format() string

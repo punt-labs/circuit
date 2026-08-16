@@ -152,6 +152,31 @@ func (predicate membershipPredicate) explainText(_ map[string]value, _ map[strin
 	return predicate.element.format() + " : " + predicate.set.format()
 }
 
+func (predicate notPredicate) evaluate(values map[string]value, bindings map[string]value) bool {
+	return !predicate.inner.evaluate(values, bindings)
+}
+
+func (predicate notPredicate) explain(values map[string]value, bindings map[string]value) []string {
+	if predicate.evaluate(values, bindings) {
+		return nil
+	}
+	return []string{"not(" + describePredicate(predicate.inner) + ")"}
+}
+
+func describePredicate(predicate predicate) string {
+	switch inner := predicate.(type) {
+	case comparisonPredicate:
+		return inner.left.format() + " " + inner.operator + " " + inner.right.format()
+	case membershipPredicate:
+		return inner.element.format() + " : " + inner.set.format()
+	case notPredicate:
+		return "not(" + describePredicate(inner.inner) + ")"
+	case binaryPredicate:
+		return describePredicate(inner.left) + " " + inner.operator + " " + describePredicate(inner.right)
+	}
+	return "predicate"
+}
+
 func (expression identifierExpression) evaluate(values map[string]value, bindings map[string]value) value {
 	if item, ok := bindings[expression.name]; ok {
 		return item

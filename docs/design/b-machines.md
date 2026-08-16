@@ -182,7 +182,8 @@ Initial predicate grammar:
 predicate    := disjunction
 disjunction := conjunction ("or" conjunction)*
 conjunction := atom ("&" atom)*
-atom        := comparison | membership | "(" predicate ")"
+atom        := negation | comparison | membership | "(" predicate ")"
+negation    := "not" "(" predicate ")"
 comparison  := expr ("=" | "/=" | "<" | "<=" | ">" | ">=") expr
 membership  := expr ":" set_expr
 set_expr    := identifier | "{" expr ("," expr)* "}"

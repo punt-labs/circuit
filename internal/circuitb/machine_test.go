@@ -148,6 +148,59 @@ func TestTDDFlowImplementBlockedWithoutSuite(t *testing.T) {
 	}
 }
 
+func TestNotPredicateNegatesInnerResult(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "NegateFlag.mch")
+	source := `MACHINE NegateFlag
+SETS
+    STATE = {ready, done};
+    TRANSITION = {go}
+VARIABLES
+    current,
+    flag
+INVARIANT
+    current : STATE &
+    flag : BOOL
+INITIALISATION
+    current := ready ||
+    flag := FALSE
+OPERATIONS
+    Advance(evt) =
+        PRE
+            evt : TRANSITION &
+            current = ready &
+            evt = go &
+            not(flag = TRUE)
+        THEN
+            current := done
+        END
+END
+`
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatalf("write negation fixture: %v", err)
+	}
+	machine, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("load negation fixture: %v", err)
+	}
+
+	blocked, err := machine.AdvanceFromWithBooleans("go", "ready", map[string]bool{"flag": true})
+	if err != nil {
+		t.Fatalf("advance go with flag true: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("go allowed with flag true; expected blocked")
+	}
+
+	allowed, err := machine.AdvanceFromWithBooleans("go", "ready", map[string]bool{"flag": false})
+	if err != nil {
+		t.Fatalf("advance go with flag false: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "done" {
+		t.Fatalf("go with flag false = %#v, want done", allowed)
+	}
+}
+
 func TestTDDFlowBooleanPreconditions(t *testing.T) {
 	t.Parallel()
 	machine, err := LoadFile(filepath.Join("..", "..", "machines", "tdd-flow.mch"))

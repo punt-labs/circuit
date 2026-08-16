@@ -282,6 +282,24 @@ func (parser *parser) conjunction() (rawPredicate, error) {
 }
 
 func (parser *parser) atom() (rawPredicate, error) {
+	if parser.consume(tokenNot) {
+		start := parser.previous().span
+		if _, err := parser.expect(tokenLParen, "expected ( after not"); err != nil {
+			return nil, err
+		}
+		inner, err := parser.disjunction()
+		if err != nil {
+			return nil, err
+		}
+		end, err := parser.expect(tokenRParen, "expected ) after not predicate")
+		if err != nil {
+			return nil, err
+		}
+		span := start
+		span.EndLine = end.span.EndLine
+		span.EndColumn = end.span.EndColumn
+		return rawNotPredicate{Inner: inner, Span: span}, nil
+	}
 	if parser.consume(tokenLParen) {
 		predicate, err := parser.disjunction()
 		if err != nil {
