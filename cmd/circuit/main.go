@@ -313,10 +313,10 @@ func (backend traceBackend) Prompt(message string) (string, error) {
 
 func (cmd command) openDriveTrace(sessionID string) (driveTrace, error) {
 	path := filepath.Join(cmd.workingDir(), ".tmp", "circuit", sessionID, "drive.jsonl")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // G703: path is session-scoped under .tmp/circuit/
 		return nil, err
 	}
-	return os.Create(path)
+	return os.Create(path) //nolint:gosec // G304: path is session-scoped trace file under .tmp/circuit/
 }
 
 func writeTrace(writer io.Writer, event map[string]any) {
@@ -337,7 +337,7 @@ func currentStateFromPrompt(message string) string {
 }
 
 func gitStatusShort(cwd string) string {
-	output, err := exec.Command("git", "-C", cwd, "status", "--short").Output()
+	output, err := exec.Command("git", "-C", cwd, "status", "--short").Output() //nolint:gosec // G204: cwd is the project working directory
 	if err != nil {
 		return ""
 	}
@@ -405,7 +405,7 @@ type guidanceFile struct {
 
 func (cmd command) loadGuidance(machine string, task string) (circuitrpc.DriverGuidance, error) {
 	path := filepath.Join(cmd.workingDir(), "machines", machine+".prompts.yaml")
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is machine-local prompts file
 	if err != nil {
 		return circuitrpc.DriverGuidance{}, err
 	}

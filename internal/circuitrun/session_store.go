@@ -77,7 +77,7 @@ func (runtime *Runtime) loadSessions() error {
 			continue
 		}
 		path := filepath.Join(runtime.sessionsDir(), entry.Name())
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) //nolint:gosec // G304: path is session JSON file under .tmp/sessions/
 		if err != nil {
 			return err
 		}

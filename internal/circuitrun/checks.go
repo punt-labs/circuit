@@ -55,7 +55,7 @@ func (runtime *Runtime) runChecks(run *Run) error {
 }
 
 func (runtime *Runtime) runBooleanCommand(command string, run *Run) bool {
-	result := exec.Command("sh", "-c", command)
+	result := exec.Command("sh", "-c", command) //nolint:gosec // G204: command is from check registry controlled by the project owner
 	result.Dir = runtime.root
 	result.Env = append(os.Environ(),
 		"CIRCUIT_SESSION_ID="+run.SessionID,
@@ -97,7 +97,7 @@ func (runtime *Runtime) loadOptionalCheckBindings(machine string) (checkBindings
 }
 
 func (runtime *Runtime) readCheckBindings(path string) (checkBindingsFile, error) {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a project-local check bindings file
 	if err != nil {
 		return checkBindingsFile{}, err
 	}
@@ -129,7 +129,7 @@ func (runtime *Runtime) loadOptionalCheckRegistry(machine string) (checkRegistry
 }
 
 func (runtime *Runtime) readCheckRegistry(path string) (checkRegistryFile, error) {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a project-local check registry file
 	if err != nil {
 		return checkRegistryFile{}, err
 	}

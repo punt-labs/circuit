@@ -29,7 +29,7 @@ check-engine: lint-engine test-engine ## Validate Go engine
 # Structural quality gate: wired to codeQualityPassed in tdd-flow.
 # These linters are calibrated to produce a small actionable failing set.
 # Tighten thresholds incrementally via the quality-ratchet pattern.
-GO_QUALITY_LINTERS := dupl,gocognit,funlen,goconst,gocritic,maintidx,exhaustive,errcheck,prealloc,nonamedreturns,cyclop
+GO_QUALITY_LINTERS := dupl,gocognit,funlen,goconst,gocritic,maintidx,exhaustive,errcheck,prealloc,nonamedreturns,cyclop,gosec
 
 check-go-quality: ## Structural quality gate (codeQualityPassed)
 	$(GOLANGCI_LINT) run --enable-only=$(GO_QUALITY_LINTERS) --tests=false ./...

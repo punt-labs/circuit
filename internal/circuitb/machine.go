@@ -3,7 +3,7 @@ package circuitb
 import "os"
 
 func LoadFile(path string) (Machine, error) {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is caller-supplied machine file; callers are CLI or tests
 	if err != nil {
 		return Machine{}, err
 	}
