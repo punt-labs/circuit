@@ -117,7 +117,7 @@ func (resolver *resolver) resolveValue(variable variable, raw rawExpression) val
 }
 
 func (resolver *resolver) resolveOperations() []operation {
-	operations := []operation{}
+	operations := make([]operation, 0, len(resolver.raw.Operations))
 	for _, rawOperation := range resolver.raw.Operations {
 		operation := operation{Name: rawOperation.Name, Span: rawOperation.Span}
 		for _, parameter := range rawOperation.Parameters {

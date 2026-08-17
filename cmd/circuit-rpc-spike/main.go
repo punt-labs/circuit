@@ -177,8 +177,8 @@ func (p *piRPC) prompt(message string) (string, error) {
 }
 
 func (p *piRPC) stop() {
-	p.stdin.Close()
-	p.cmd.Wait()
+	_ = p.stdin.Close()
+	_ = p.cmd.Wait()
 }
 
 func truncate(s string, n int) string {

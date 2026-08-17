@@ -234,7 +234,7 @@ func (cmd command) drive(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer trace.Close()
+	defer func() { _ = trace.Close() }()
 	backend = traceBackend{backend: backend, trace: trace, cwd: cmd.workingDir()}
 	guidance, err := cmd.loadGuidance(machine, task)
 	if err != nil {

@@ -65,6 +65,9 @@ linters:
     godot:
       scope: declarations
 
+    exhaustive:
+      default-signifies-exhaustive: true
+
   exclusions:
     rules:
       # fmt.Fprintf/Fprintln/Printf return values are intentionally ignored in

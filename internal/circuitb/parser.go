@@ -609,6 +609,7 @@ func tokenName(typeof tokenType) string {
 		return "OPERATIONS"
 	case tokenInvariant:
 		return "INVARIANT"
+	default:
+		return fmt.Sprintf("token %d", typeof)
 	}
-	return fmt.Sprintf("token %d", typeof)
 }
