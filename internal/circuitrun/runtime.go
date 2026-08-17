@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/punt-labs/circuit/internal/circuitb"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -253,26 +254,26 @@ func (runtime *Runtime) statusFromReport(run *Run, report circuitb.StateReport) 
 	}
 }
 
-func (runtime *Runtime) singleKnownSession() (*Run, error) {
-	ids := runtime.knownSessionIDs()
+func (runtime *Runtime) singleSessionByIDs(ids []string, noneErr, manyFmt string) (*Run, error) {
 	if len(ids) == 0 {
-		return nil, errors.New("no session; run: circuit start <machine>")
+		return nil, errors.New(noneErr)
 	}
 	if len(ids) > 1 {
-		return nil, fmt.Errorf("multiple sessions; specify one of: %s", strings.Join(ids, ", "))
+		return nil, fmt.Errorf("%s; specify one of: %s", manyFmt, strings.Join(ids, ", "))
 	}
 	return runtime.sessions[ids[0]], nil
 }
 
+func (runtime *Runtime) singleKnownSession() (*Run, error) {
+	return runtime.singleSessionByIDs(runtime.knownSessionIDs(),
+		"no session; run: circuit start <machine>",
+		"multiple sessions")
+}
+
 func (runtime *Runtime) singleActiveSession() (*Run, error) {
-	ids := runtime.activeSessionIDs()
-	if len(ids) == 0 {
-		return nil, errors.New("no active session; run: circuit start <machine>")
-	}
-	if len(ids) > 1 {
-		return nil, fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(ids, ", "))
-	}
-	return runtime.sessions[ids[0]], nil
+	return runtime.singleSessionByIDs(runtime.activeSessionIDs(),
+		"no active session; run: circuit start <machine>",
+		"multiple active sessions")
 }
 
 func (runtime *Runtime) knownSessionByID(id string) (*Run, error) {
@@ -345,9 +346,7 @@ func booleanValuations(variables []string, base map[string]bool) []map[string]bo
 	valuations := make([]map[string]bool, 0, count)
 	for bits := range count {
 		valuation := map[string]bool{}
-		for key, value := range base {
-			valuation[key] = value
-		}
+		maps.Copy(valuation, base)
 		for index, variable := range variables {
 			valuation[variable] = bits&(1<<index) != 0
 		}
@@ -365,8 +364,6 @@ func (runtime *Runtime) resolveMachineFile(path string) string {
 
 func cloneChecks(checks map[string]CheckRuntime) map[string]CheckRuntime {
 	clone := map[string]CheckRuntime{}
-	for key, value := range checks {
-		clone[key] = value
-	}
+	maps.Copy(clone, checks)
 	return clone
 }

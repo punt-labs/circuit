@@ -2,6 +2,7 @@ package circuitrpc
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
@@ -76,10 +77,8 @@ func extractOperationFromCalls(response string, calls []circuitb.CallStatus) str
 	for _, call := range calls {
 		event := ExtractEvent(call.Call)
 		eventLower := strings.ToLower(event)
-		for _, word := range words {
-			if word == eventLower {
-				return event
-			}
+		if slices.Contains(words, eventLower) {
+			return event
 		}
 	}
 	return ""

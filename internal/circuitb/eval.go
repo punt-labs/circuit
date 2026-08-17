@@ -1,5 +1,7 @@
 package circuitb
 
+import "maps"
+
 import "fmt"
 
 func (machine Machine) State(facts map[string]value) (StateReport, error) {
@@ -73,12 +75,8 @@ func (machine Machine) valuesWithBooleans(booleans map[string]bool) map[string]v
 
 func (machine Machine) valuesWithFacts(facts map[string]value) map[string]value {
 	values := map[string]value{}
-	for key, item := range machine.initial {
-		values[key] = item
-	}
-	for key, item := range facts {
-		values[key] = item
-	}
+	maps.Copy(values, machine.initial)
+	maps.Copy(values, facts)
 	return values
 }
 
@@ -243,9 +241,7 @@ func (substitution parallelAssignment) apply(values map[string]value, bindings m
 	for _, item := range substitution.assignments {
 		updates[item.name] = item.value.evaluate(values, bindings)
 	}
-	for key, item := range updates {
-		next[key] = item
-	}
+	maps.Copy(next, updates)
 	return next
 }
 
@@ -263,8 +259,6 @@ func (substitution ifSubstitution) apply(values map[string]value, bindings map[s
 
 func cloneValues(values map[string]value) map[string]value {
 	clone := map[string]value{}
-	for key, item := range values {
-		clone[key] = item
-	}
+	maps.Copy(clone, values)
 	return clone
 }

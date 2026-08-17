@@ -2,6 +2,7 @@ package circuitb
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 )
 
@@ -552,10 +553,8 @@ func (parser *parser) identifierList(end tokenType, message string) ([]rawIdenti
 }
 
 func (parser *parser) expectAny(types []tokenType, message string) (token, error) {
-	for _, typeof := range types {
-		if parser.at(typeof) {
-			return parser.advance(), nil
-		}
+	if slices.ContainsFunc(types, parser.at) {
+		return parser.advance(), nil
 	}
 	return token{}, Diagnostic{Span: parser.current().span, Message: message}
 }

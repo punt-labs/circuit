@@ -17,8 +17,12 @@ linters:
     - govet
     - staticcheck
     - unused
+    - ineffassign
 
   settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
     staticcheck:
       checks:
         - all
@@ -33,7 +37,7 @@ linters:
     # --- quality gate settings (used by make check-go-quality) ---
 
     dupl:
-      threshold: 100
+      threshold: 50
 
     funlen:
       lines: 70
@@ -46,7 +50,7 @@ linters:
       max-complexity: 15
 
     maintidx:
-      under: 40
+      under: 25
 
     nestif:
       min-complexity: 6

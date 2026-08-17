@@ -113,7 +113,7 @@ func (cmd command) load(args []string) error {
 	return nil
 }
 
-func parseLoadArgs(args []string) (bool, string, error) {
+func parseJSONFlagWithMachineArg(args []string) (bool, string, error) {
 	var jsonMode bool
 	var machine string
 	for _, arg := range args {
@@ -131,6 +131,10 @@ func parseLoadArgs(args []string) (bool, string, error) {
 		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
 	}
 	return jsonMode, machine, nil
+}
+
+func parseLoadArgs(args []string) (bool, string, error) {
+	return parseJSONFlagWithMachineArg(args)
 }
 
 func (cmd command) scaffold(args []string) error {
@@ -160,23 +164,7 @@ func (cmd command) scaffold(args []string) error {
 }
 
 func parseScaffoldArgs(args []string) (bool, string, error) {
-	var jsonMode bool
-	var machine string
-	for _, arg := range args {
-		switch arg {
-		case jsonFlag:
-			jsonMode = true
-		default:
-			if machine != "" {
-				return false, "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			machine = arg
-		}
-	}
-	if machine == "" {
-		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
-	}
-	return jsonMode, machine, nil
+	return parseJSONFlagWithMachineArg(args)
 }
 
 func (cmd command) start(args []string) error {
@@ -205,23 +193,7 @@ func (cmd command) start(args []string) error {
 }
 
 func parseStartArgs(args []string) (bool, string, error) {
-	var jsonMode bool
-	var machine string
-	for _, arg := range args {
-		switch arg {
-		case jsonFlag:
-			jsonMode = true
-		default:
-			if machine != "" {
-				return false, "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			machine = arg
-		}
-	}
-	if machine == "" {
-		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
-	}
-	return jsonMode, machine, nil
+	return parseJSONFlagWithMachineArg(args)
 }
 
 func (cmd command) drive(args []string) error {
@@ -240,7 +212,11 @@ func (cmd command) drive(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = trace.Close() }()
+	defer func() {
+		if err := trace.Close(); err != nil {
+			fmt.Fprintf(cmd.stderr, "close trace: %v\n", err)
+		}
+	}()
 	backend = traceBackend{backend: backend, trace: trace, cwd: cmd.workingDir()}
 	guidance, err := cmd.loadGuidance(machine, task)
 	if err != nil {
@@ -328,9 +304,9 @@ func writeTrace(writer io.Writer, event map[string]any) {
 }
 
 func currentStateFromPrompt(message string) string {
-	for _, line := range strings.Split(message, "\n") {
-		if strings.HasPrefix(line, "Current state: ") {
-			return strings.TrimPrefix(line, "Current state: ")
+	for line := range strings.SplitSeq(message, "\n") {
+		if after, ok := strings.CutPrefix(line, "Current state: "); ok {
+			return after
 		}
 	}
 	return ""
@@ -392,9 +368,15 @@ func launchPiBackend(cwd string) (circuitrpc.AgentBackend, func(), error) {
 	}
 	backend := circuitrpc.NewPiRPCBackend(stdin, bufio.NewReader(stdout))
 	cleanup := func() {
-		_ = stdin.Close()
-		_ = process.Process.Signal(os.Interrupt)
-		_ = process.Wait()
+		if err := stdin.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close stdin: %v\n", err)
+		}
+		if err := process.Process.Signal(os.Interrupt); err != nil {
+			fmt.Fprintf(os.Stderr, "signal process: %v\n", err)
+		}
+		if err := process.Wait(); err != nil {
+			fmt.Fprintf(os.Stderr, "wait process: %v\n", err)
+		}
 	}
 	return backend, cleanup, nil
 }
