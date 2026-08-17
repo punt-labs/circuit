@@ -184,6 +184,112 @@ The exact thresholds and tools can be tightened later.
 - Should `/circuit:tdd <slice>` in outer Pi wrap `circuit drive tdd-flow`?
 - Should `check-go-quality` include more tools after dupl/gocognit/funlen?
 
+## Quality-ratchet loop lessons
+
+The ratchet loop idea works. The approach:
+
+1. Create a worktree from current HEAD.
+2. Prepare the worktree (`make build`, `npm install`).
+3. Run `circuit drive tdd-flow` with a ratchet-specific prompt override.
+4. Apply and verify the result.
+5. Commit.
+6. Repeat with the next quality dimension.
+
+Three ratchet loops ran successfully:
+
+- goconst (run 1): worked first time using generic TDD prompt.
+- gocritic (run 2): generic prompt failed; ratchet prompt override succeeded.
+- maintidx (run 3): ratchet prompt override succeeded.
+
+`make check-go-quality` now runs:
+
+```text
+dupl, gocognit, funlen, goconst, gocritic, maintidx
+```
+
+and passes.
+
+## Generic TDD prompt is wrong for ratchet slices
+
+The standard `spec` prompt says:
+
+```text
+Write the failing test.
+Do not implement production code.
+When the targeted test is failing, request writeTest.
+```
+
+For a ratchet slice, there is no failing product test. The work is:
+
+```text
+Tighten the quality gate so check-go-quality fails on current code.
+Then refactor until it passes.
+```
+
+The agent kept requesting `writeTest` without changing files, hitting the
+10-prompt cap with nothing to show.
+
+The fix was a prompt override in the worktree. However, editing prompt files in
+a worktree is a manual step that breaks the loop ergonomics.
+
+## Needed: first-class prompt override per run
+
+The goal for tomorrow is to make prompt override input rather than file editing.
+
+Something like:
+
+```text
+circuit drive tdd-flow \
+  --task "Add gocritic to check-go-quality" \
+  --prompt-spec ratchet
+```
+
+where `ratchet` is either a named preset or a file path:
+
+```text
+circuit drive tdd-flow \
+  --task "Add gocritic to check-go-quality" \
+  --prompts .tmp/ratchet-prompts.yaml
+```
+
+This makes prompt overrides data, not worktree edits. It also closes the loop
+without requiring manual worktree prompt file changes between runs.
+
+## Ratchet prompt override structure
+
+The ratchet prompt override rewrites the standard states:
+
+```yaml
+states:
+  spec:
+    prompt: >
+      Tighten check-go-quality so it fails on current code. Do not refactor yet.
+      When check-go-quality fails, request writeTest.
+    event: writeTest
+  red:
+    prompt: >
+      Refactor until make check and check-go-quality pass. Request implement.
+    event: implement
+```
+
+`green`, `qualityReview`, and `refactoring` can remain the same as the product
+TDD prompts.
+
+## Worktree setup as a prerequisite
+
+Every smoke/ratchet run must include:
+
+```text
+git worktree add .tmp/worktrees/<name> HEAD
+env -C .tmp/worktrees/<name>/.pi npm install
+env -C .tmp/worktrees/<name> make build
+```
+
+Without `npm install`, `make check` fails for setup reasons, which makes
+`testSuitePassed` false for the wrong reason and breaks the TDD semantics.
+
+This three-step setup should become `.bin/prep-drive-worktree.sh`.
+
 ## Current conclusion
 
 Circuit is useful when it is the middle authority, not merely context injected
