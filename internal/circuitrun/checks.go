@@ -99,11 +99,11 @@ func (runtime *Runtime) loadOptionalCheckBindings(machine string) (checkBindings
 func (runtime *Runtime) readCheckBindings(path string) (checkBindingsFile, error) {
 	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a project-local check bindings file
 	if err != nil {
-		return checkBindingsFile{}, err
+		return checkBindingsFile{}, fmt.Errorf("read check bindings %s: %w", path, err)
 	}
 	var bindings checkBindingsFile
 	if err := yaml.Unmarshal(content, &bindings); err != nil {
-		return checkBindingsFile{}, err
+		return checkBindingsFile{}, fmt.Errorf("parse check bindings %s: %w", path, err)
 	}
 	return bindings, nil
 }
@@ -111,9 +111,12 @@ func (runtime *Runtime) readCheckBindings(path string) (checkBindingsFile, error
 func (runtime *Runtime) writeCheckBindings(machine string, bindings checkBindingsFile) error {
 	content, err := yaml.Marshal(bindings)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal check bindings: %w", err)
 	}
-	return os.WriteFile(runtime.checkBindingsPath(machine), content, 0o600)
+	if err := os.WriteFile(runtime.checkBindingsPath(machine), content, 0o600); err != nil {
+		return fmt.Errorf("write check bindings: %w", err)
+	}
+	return nil
 }
 
 func (runtime *Runtime) loadCheckRegistry(machine string) (checkRegistryFile, error) {
@@ -131,11 +134,11 @@ func (runtime *Runtime) loadOptionalCheckRegistry(machine string) (checkRegistry
 func (runtime *Runtime) readCheckRegistry(path string) (checkRegistryFile, error) {
 	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a project-local check registry file
 	if err != nil {
-		return checkRegistryFile{}, err
+		return checkRegistryFile{}, fmt.Errorf("read check registry %s: %w", path, err)
 	}
 	var registry checkRegistryFile
 	if err := yaml.Unmarshal(content, &registry); err != nil {
-		return checkRegistryFile{}, err
+		return checkRegistryFile{}, fmt.Errorf("parse check registry %s: %w", path, err)
 	}
 	return registry, nil
 }
@@ -143,9 +146,12 @@ func (runtime *Runtime) readCheckRegistry(path string) (checkRegistryFile, error
 func (runtime *Runtime) writeCheckRegistry(machine string, registry checkRegistryFile) error {
 	content, err := yaml.Marshal(registry)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal check registry: %w", err)
 	}
-	return os.WriteFile(runtime.checkRegistryPath(machine), content, 0o600)
+	if err := os.WriteFile(runtime.checkRegistryPath(machine), content, 0o600); err != nil {
+		return fmt.Errorf("write check registry: %w", err)
+	}
+	return nil
 }
 
 func (runtime *Runtime) checkBindingsPath(machine string) string {

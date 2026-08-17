@@ -25,17 +25,17 @@ func (backend *PiRPCBackend) Prompt(message string) (string, error) {
 	request := PromptRequest{ID: fmt.Sprintf("req-%d", backend.seq), Type: "prompt", Message: message}
 	data, err := json.Marshal(request)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal prompt request: %w", err)
 	}
 	if _, err := fmt.Fprintf(backend.writer, "%s\n", data); err != nil {
-		return "", err
+		return "", fmt.Errorf("write prompt request: %w", err)
 	}
 
 	var lastText string
 	for {
 		line, err := backend.reader.ReadString('\n')
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("read rpc event: %w", err)
 		}
 		var event Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {

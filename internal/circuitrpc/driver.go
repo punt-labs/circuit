@@ -72,14 +72,14 @@ func RunUntilAcceptedWithGuidance(runtime *circuitrun.Runtime, backend AgentBack
 	for result.Prompts < maxDriverPrompts {
 		status, err := runtime.Status()
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("get circuit status: %w", err)
 		}
 		if status.SessionState == circuitrun.SessionStopped {
 			return result, fmt.Errorf("cannot drive stopped state %s", status.Current)
 		}
 		response, err := backend.Prompt(FormatPromptWithGuidance(status, guidance))
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("prompt agent: %w", err)
 		}
 		result.Prompts++
 		operation := ExtractRequestedOperation(response, status)
@@ -88,7 +88,7 @@ func RunUntilAcceptedWithGuidance(runtime *circuitrun.Runtime, backend AgentBack
 		}
 		report, err := runtime.Advance(operation)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("advance circuit: %w", err)
 		}
 		if !report.Allowed {
 			continue

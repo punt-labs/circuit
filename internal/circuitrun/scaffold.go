@@ -1,13 +1,15 @@
 package circuitrun
 
 import (
+	"fmt"
+
 	"github.com/punt-labs/circuit/internal/circuitb"
 )
 
 func (runtime *Runtime) Scaffold(machineName string) (ScaffoldReport, error) {
 	machine, err := circuitb.LoadFile(runtime.resolveMachineFile(machineName))
 	if err != nil {
-		return ScaffoldReport{}, err
+		return ScaffoldReport{}, fmt.Errorf("load machine %s: %w", machineName, err)
 	}
 	bindings, err := runtime.loadOptionalCheckBindings(machineName)
 	if err != nil {

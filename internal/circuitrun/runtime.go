@@ -48,11 +48,11 @@ func (runtime *Runtime) Start(machineName string) (string, StatusReport, error) 
 	machineFile := runtime.resolveMachineFile(machineName)
 	machine, err := circuitb.LoadFile(machineFile)
 	if err != nil {
-		return "", StatusReport{}, err
+		return "", StatusReport{}, fmt.Errorf("load machine %s: %w", machineName, err)
 	}
 	report, err := machine.State(nil)
 	if err != nil {
-		return "", StatusReport{}, err
+		return "", StatusReport{}, fmt.Errorf("get initial state: %w", err)
 	}
 	id, err := runtime.newSessionID(machineName)
 	if err != nil {
@@ -169,7 +169,7 @@ func (runtime *Runtime) UnloadByID(id string) error {
 		runtime.currentID = ""
 	}
 	if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("remove session file: %w", err)
 	}
 	if len(runtime.knownSessionIDs()) == 0 {
 		runtime.lastState = SessionUnloaded
@@ -180,7 +180,7 @@ func (runtime *Runtime) UnloadByID(id string) error {
 func (runtime *Runtime) ListMachines() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(runtime.root, "machines"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read machines directory: %w", err)
 	}
 	names := []string{}
 	for _, entry := range entries {
@@ -200,14 +200,14 @@ func (runtime *Runtime) SuspendedPath() string {
 func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error) {
 	machine, err := circuitb.LoadFile(run.MachineFile)
 	if err != nil {
-		return AdvanceReport{}, err
+		return AdvanceReport{}, fmt.Errorf("load machine %s: %w", run.MachineName, err)
 	}
 	if err := runtime.runChecks(run); err != nil {
 		return AdvanceReport{}, err
 	}
 	result, err := machine.AdvanceFromWithBooleans(event, run.Current, run.Booleans)
 	if err != nil {
-		return AdvanceReport{}, err
+		return AdvanceReport{}, fmt.Errorf("advance machine: %w", err)
 	}
 	report := AdvanceReport{
 		SessionID: run.SessionID,
@@ -232,11 +232,11 @@ func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error
 func (runtime *Runtime) statusForRun(run *Run) (StatusReport, error) {
 	machine, err := circuitb.LoadFile(run.MachineFile)
 	if err != nil {
-		return StatusReport{}, err
+		return StatusReport{}, fmt.Errorf("load machine %s: %w", run.MachineName, err)
 	}
 	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
 	if err != nil {
-		return StatusReport{}, err
+		return StatusReport{}, fmt.Errorf("get machine state: %w", err)
 	}
 	return runtime.statusFromReport(run, report), nil
 }

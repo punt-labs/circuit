@@ -8,7 +8,7 @@ import (
 func (runtime *Runtime) Load(machineName string) (LoadReport, error) {
 	machine, err := circuitb.LoadFile(runtime.resolveMachineFile(machineName))
 	if err != nil {
-		return LoadReport{}, err
+		return LoadReport{}, fmt.Errorf("load machine %s: %w", machineName, err)
 	}
 	bindings, registry, err := runtime.loadCheckConfiguration(machineName)
 	if err != nil {
