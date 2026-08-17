@@ -173,6 +173,42 @@ func TestTDDFlowUsesTestSuitePassedNegation(t *testing.T) {
 	}
 }
 
+func TestPRWatchRequiresChecksAndReviewBeforeFixed(t *testing.T) {
+	t.Parallel()
+	machine, err := LoadFile(filepath.Join("..", "..", "machines", "pr-watch.mch"))
+	if err != nil {
+		t.Fatalf("load pr-watch: %v", err)
+	}
+
+	if variables := machine.BooleanVariables(); len(variables) != 2 || variables[0] != "checksGreen" || variables[1] != "reviewClean" {
+		t.Fatalf("BooleanVariables = %v, want [checksGreen reviewClean]", variables)
+	}
+
+	blocked, err := machine.AdvanceFromWithBooleans("fixed", "fixing", map[string]bool{"checksGreen": false, "reviewClean": false})
+	if err != nil {
+		t.Fatalf("advance fixed with nothing green: %v", err)
+	}
+	if blocked.Allowed {
+		t.Fatal("fixed allowed when checks and review both failing")
+	}
+
+	blockedChecks, err := machine.AdvanceFromWithBooleans("fixed", "fixing", map[string]bool{"checksGreen": true, "reviewClean": false})
+	if err != nil {
+		t.Fatalf("advance fixed with only checks green: %v", err)
+	}
+	if blockedChecks.Allowed {
+		t.Fatal("fixed allowed when review not clean")
+	}
+
+	allowed, err := machine.AdvanceFromWithBooleans("fixed", "fixing", map[string]bool{"checksGreen": true, "reviewClean": true})
+	if err != nil {
+		t.Fatalf("advance fixed with both green: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "done" {
+		t.Fatalf("fixed = %#v, want done", allowed)
+	}
+}
+
 func TestNotPredicateNegatesInnerResult(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "NegateFlag.mch")

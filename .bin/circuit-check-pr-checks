@@ -1,0 +1,43 @@
+#!/usr/bin/env sh
+set -eu
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+[ -n "${CIRCUIT_SESSION_ID}" ] || fail "CIRCUIT_SESSION_ID is required"
+config=.tmp/circuit/$CIRCUIT_SESSION_ID/pr-watch.env
+
+[ -f "$config" ] || fail "missing pr-watch evidence file: $config"
+
+read_config_key() {
+	awk -v key="$1" '
+		BEGIN { FS = "=" }
+		$1 == key { value = substr($0, index($0, "=") + 1) }
+		END { print value }
+	' "$config"
+}
+
+pr=$(read_config_key PR_NUMBER)
+repo=$(read_config_key REPO)
+
+[ -n "$pr" ] || fail "PR_NUMBER is required in $config"
+[ -n "$repo" ] || fail "REPO is required in $config"
+
+set +e
+result=$(gh pr checks "$pr" -R "$repo" 2>&1)
+status=$?
+set -e
+
+if [ "$status" -ne 0 ]; then
+	printf '%s\n' "$result" >&2
+	fail "gh pr checks failed"
+fi
+
+printf '%s\n' "$result" | grep -qvE '^(pass|success|skip)' && {
+	printf '%s\n' "$result" >&2
+	exit 1
+}
+
+printf 'all PR checks green\n'

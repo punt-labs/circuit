@@ -469,6 +469,7 @@ func TestPRWatchAdvancesToDone(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
+	writePRWatchRegistry(t, cmd.cwd, "true", "true")
 
 	if err := cmd.run([]string{"start", "pr-watch"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
@@ -943,7 +944,7 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "build-job.prompts.yaml", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "tdd-flow.prompts.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "build-job.prompts.yaml", "pr-watch.mch", "pr-watch.checks.yaml", "pr-watch.prompts.yaml", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "tdd-flow.prompts.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
@@ -1040,6 +1041,15 @@ func writeRegistry(t *testing.T, root string, command string) {
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func writePRWatchRegistry(t *testing.T, root string, checksGreenCommand string, reviewCleanCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  prChecksGreen:\n    kind: command\n    command: " + checksGreenCommand + "\n    returns: BOOL\n  prReviewClean:\n    kind: command\n    command: " + reviewCleanCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write pr-watch registry: %v", err)
 	}
 }
 

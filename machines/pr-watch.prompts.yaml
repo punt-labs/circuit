@@ -1,0 +1,16 @@
+states:
+  watch:
+    prompt: >
+      You are watching a PR for feedback. Observe the current state of CI
+      checks and review findings using gh pr checks and gh pr view. If any
+      checks are failing or there are open review comments, request needsWork.
+    event: needsWork
+  fixing:
+    prompt: >
+      CI checks or review findings need attention. Read the failing checks and
+      review comments carefully. Fix the issues on the feature branch, push,
+      and wait for new check results. When all checks pass and all review
+      threads are resolved, Circuit will observe checksGreen and reviewClean
+      and allow the fixed transition. Request fixed only after the evidence
+      file confirms both facts.
+    event: fixed
