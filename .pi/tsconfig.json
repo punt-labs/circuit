@@ -20,6 +20,7 @@
 		"lib/**/*.ts",
 		"tests/**/*.ts",
 		"types/**/*.d.ts",
-		"eslint.config.mjs"
+		"eslint.config.mjs",
+		"vitest.config.ts"
 	]
 }

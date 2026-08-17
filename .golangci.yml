@@ -1,7 +1,14 @@
 # golangci-lint config for circuit.
 #
-# Matches the ethos convention: golangci-lint v2 with a conservative linter
-# set. Only linters the tree passes clean today are enabled.
+# Two tiers of linting:
+#
+#   make check          runs the default linters (always-on gate)
+#   make check-go-quality  runs the structural quality linters (codeQualityPassed gate)
+#
+# Default linters (govet, staticcheck, unused, gofmt) must pass on every commit.
+# Quality linters are calibrated to produce an actionable failure set and are
+# tightened incrementally via the tdd-flow quality-ratchet pattern.
+
 version: "2"
 
 linters:
@@ -10,6 +17,7 @@ linters:
     - govet
     - staticcheck
     - unused
+
   settings:
     staticcheck:
       checks:
@@ -21,15 +29,58 @@ linters:
         - -ST1021
         - -ST1022
         - -QF*
+
+    # --- quality gate settings (used by make check-go-quality) ---
+
+    # duplication
     dupl:
       threshold: 100
+
+    # function length
     funlen:
       lines: 70
       statements: 40
+
+    # cognitive complexity
     gocognit:
       min-complexity: 20
+
+    # cyclomatic complexity
+    cyclop:
+      max-complexity: 15
+
+    # maintainability index
     maintidx:
       under: 40
+
+    # nesting
+    nestif:
+      min-complexity: 6
+
+    # named returns
+    nakedret:
+      max-func-lines: 0
+
+    # misspelling
+    misspell:
+      locale: US
+
+    # revive rules
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+    # godot comment periods
+    godot:
+      scope: declarations
+
+    # wrapcheck: only wrap errors from external packages
+    wrapcheck:
+      ignoreSigRegexps:
+        - \.Err\(\)$
+        - errors\.New\(
+        - fmt\.Errorf\(
 
 formatters:
   enable:

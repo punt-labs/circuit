@@ -17,7 +17,7 @@ GOBIN := $(shell go env GOPATH)/bin
 endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
-.PHONY: help check check-engine check-go-quality check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
+.PHONY: help check check-engine check-go-quality check-go-all check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi smoke-drive lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
@@ -26,8 +26,20 @@ check: format check-engine check-rpc check-pi-extension check-docs ## Run all qu
 
 check-engine: lint-engine test-engine ## Validate Go engine
 
-check-go-quality: ## Check Go duplication, cognitive complexity, function length, maintainability, and repeated constants
-	$(GOLANGCI_LINT) run --enable-only=dupl,gocognit,funlen,goconst,gocritic,maintidx --tests=false ./...
+# Structural quality gate: wired to codeQualityPassed in tdd-flow.
+# These linters are calibrated to produce a small actionable failing set.
+# Tighten thresholds incrementally via the quality-ratchet pattern.
+GO_QUALITY_LINTERS := dupl,gocognit,funlen,goconst,gocritic,maintidx
+
+check-go-quality: ## Structural quality gate (codeQualityPassed)
+	$(GOLANGCI_LINT) run --enable-only=$(GO_QUALITY_LINTERS) --tests=false ./...
+
+# Breadth report: all candidate linters, informational only (does not gate commits).
+# Run this to see the full picture before choosing the next ratchet dimension.
+GO_ALL_LINTERS := $(GO_QUALITY_LINTERS),errcheck,errorlint,nilnil,nilerr,wrapcheck,unparam,wastedassign,exhaustive,nestif,cyclop,nonamedreturns,prealloc,forcetypeassert,gosec,paralleltest,thelper,revive,misspell,godot,nakedret
+
+check-go-all: ## Full Go quality breadth report (informational, not a gate)
+	$(GOLANGCI_LINT) run --enable-only=$(GO_ALL_LINTERS) --tests=false ./... || true
 
 check-rpc: test-rpc ## Validate RPC protocol logic
 
