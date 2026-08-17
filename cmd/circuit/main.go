@@ -113,7 +113,9 @@ func (cmd command) load(args []string) error {
 	return nil
 }
 
-func parseLoadArgs(args []string) (jsonMode bool, machine string, err error) {
+func parseLoadArgs(args []string) (bool, string, error) {
+	var jsonMode bool
+	var machine string
 	for _, arg := range args {
 		switch arg {
 		case jsonFlag:
@@ -157,7 +159,9 @@ func (cmd command) scaffold(args []string) error {
 	return nil
 }
 
-func parseScaffoldArgs(args []string) (jsonMode bool, machine string, err error) {
+func parseScaffoldArgs(args []string) (bool, string, error) {
+	var jsonMode bool
+	var machine string
 	for _, arg := range args {
 		switch arg {
 		case jsonFlag:
@@ -200,7 +204,9 @@ func (cmd command) start(args []string) error {
 	return nil
 }
 
-func parseStartArgs(args []string) (jsonMode bool, machine string, err error) {
+func parseStartArgs(args []string) (bool, string, error) {
+	var jsonMode bool
+	var machine string
 	for _, arg := range args {
 		switch arg {
 		case jsonFlag:
@@ -345,7 +351,8 @@ func (cmd command) agentBackend() (circuitrpc.AgentBackend, func(), error) {
 	return launchPiBackend(cmd.workingDir())
 }
 
-func parseDriveArgs(args []string) (machine string, task string, err error) {
+func parseDriveArgs(args []string) (string, string, error) {
+	var machine, task string
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch arg {
@@ -444,7 +451,7 @@ func (cmd command) status(args []string) error {
 	return runtime.Suspend()
 }
 
-func parseStatusArgs(args []string) (jsonMode bool, session string, err error) {
+func parseStatusArgs(args []string) (bool, string, error) {
 	return parseJSONFlagWithOptionalArgument(args)
 }
 
@@ -613,7 +620,9 @@ func (cmd command) advance(args []string) error {
 	return nil
 }
 
-func parseAdvanceArgs(args []string) (jsonMode bool, event string, session string, err error) {
+func parseAdvanceArgs(args []string) (bool, string, string, error) {
+	var jsonMode bool
+	var event, session string
 	for _, arg := range args {
 		switch arg {
 		case jsonFlag:
@@ -654,8 +663,8 @@ func (cmd command) unload(args []string) error {
 	return nil
 }
 
-func parseUnloadArgs(args []string) (jsonMode bool, session string, err error) {
-	jsonMode, session, err = parseJSONFlagWithOptionalArgument(args)
+func parseUnloadArgs(args []string) (bool, string, error) {
+	jsonMode, session, err := parseJSONFlagWithOptionalArgument(args)
 	if err != nil {
 		return false, "", err
 	}
@@ -698,11 +707,13 @@ func (cmd command) stop(args []string) error {
 	return nil
 }
 
-func parseStopArgs(args []string) (jsonMode bool, session string, err error) {
+func parseStopArgs(args []string) (bool, string, error) {
 	return parseJSONFlagWithOptionalArgument(args)
 }
 
-func parseJSONFlagWithOptionalArgument(args []string) (jsonMode bool, argument string, err error) {
+func parseJSONFlagWithOptionalArgument(args []string) (bool, string, error) {
+	var jsonMode bool
+	var argument string
 	for _, arg := range args {
 		switch arg {
 		case jsonFlag:

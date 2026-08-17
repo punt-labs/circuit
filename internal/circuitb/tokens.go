@@ -46,38 +46,35 @@ type token struct {
 	span   Span
 }
 
+// uppercaseKeywords maps uppercase B-method keywords to their token types.
+var uppercaseKeywords = map[string]tokenType{
+	"MACHINE":        tokenMachine,
+	"SETS":           tokenSets,
+	"VARIABLES":      tokenVariables,
+	"INVARIANT":      tokenInvariant,
+	"INITIALISATION": tokenInitialisation,
+	"OPERATIONS":     tokenOperations,
+	"PRE":            tokenPre,
+	"THEN":           tokenThen,
+	"IF":             tokenIf,
+	"ELSIF":          tokenElsif,
+	"ELSE":           tokenElse,
+	"END":            tokenEnd,
+	"ANY":            tokenAny,
+}
+
+// lowercaseKeywords maps lowercase B-method keywords to their token types.
+var lowercaseKeywords = map[string]tokenType{
+	"or":  tokenOr,
+	"not": tokenNot,
+}
+
 func keywordType(value string) (tokenType, bool) {
-	switch value {
-	case "MACHINE":
-		return tokenMachine, true
-	case "SETS":
-		return tokenSets, true
-	case "VARIABLES":
-		return tokenVariables, true
-	case "INVARIANT":
-		return tokenInvariant, true
-	case "INITIALISATION":
-		return tokenInitialisation, true
-	case "OPERATIONS":
-		return tokenOperations, true
-	case "PRE":
-		return tokenPre, true
-	case "THEN":
-		return tokenThen, true
-	case "IF":
-		return tokenIf, true
-	case "ELSIF":
-		return tokenElsif, true
-	case "ELSE":
-		return tokenElse, true
-	case "END":
-		return tokenEnd, true
-	case "or":
-		return tokenOr, true
-	case "not":
-		return tokenNot, true
-	case "ANY":
-		return tokenAny, true
+	if tt, ok := uppercaseKeywords[value]; ok {
+		return tt, true
+	}
+	if tt, ok := lowercaseKeywords[value]; ok {
+		return tt, true
 	}
 	return tokenEOF, false
 }
