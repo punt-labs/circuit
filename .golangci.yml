@@ -69,6 +69,8 @@ linters:
       default-signifies-exhaustive: true
 
   exclusions:
+    paths:
+      - \.tmp/
     rules:
       # fmt.Fprintf/Fprintln/Printf return values are intentionally ignored in
       # the CLI output layer. The writer is either os.Stdout or a test buffer;
@@ -78,6 +80,10 @@ linters:
           - errcheck
           - wrapcheck
         text: 'fmt\.F'
+      # CLI adapter layer does not need to wrap errors from library packages.
+      - path: 'cmd/'
+        linters:
+          - wrapcheck
 
 formatters:
   enable:
