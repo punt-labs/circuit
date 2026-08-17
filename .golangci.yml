@@ -32,55 +32,49 @@ linters:
 
     # --- quality gate settings (used by make check-go-quality) ---
 
-    # duplication
     dupl:
       threshold: 100
 
-    # function length
     funlen:
       lines: 70
       statements: 40
 
-    # cognitive complexity
     gocognit:
       min-complexity: 20
 
-    # cyclomatic complexity
     cyclop:
       max-complexity: 15
 
-    # maintainability index
     maintidx:
       under: 40
 
-    # nesting
     nestif:
       min-complexity: 6
 
-    # named returns
     nakedret:
       max-func-lines: 0
 
-    # misspelling
     misspell:
       locale: US
 
-    # revive rules
     revive:
       rules:
         - name: exported
           disabled: true
 
-    # godot comment periods
     godot:
       scope: declarations
 
-    # wrapcheck: only wrap errors from external packages
-    wrapcheck:
-      ignoreSigRegexps:
-        - \.Err\(\)$
-        - errors\.New\(
-        - fmt\.Errorf\(
+  exclusions:
+    rules:
+      # fmt.Fprintf/Fprintln/Printf return values are intentionally ignored in
+      # the CLI output layer. The writer is either os.Stdout or a test buffer;
+      # errors there are not actionable in a CLI binary.
+      - path: 'cmd/circuit/main\.go'
+        linters:
+          - errcheck
+          - wrapcheck
+        text: 'fmt\.F'
 
 formatters:
   enable:
