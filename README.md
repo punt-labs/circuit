@@ -233,8 +233,9 @@ source.
 
 `circuit` is Nix-first from the start.
 
-The dev shell provides Go, Node, markdown linting, staticcheck, Beads, GitHub
-CLI, and shell tooling. Normal development should happen inside the Nix shell:
+The dev shell provides Go, Node, markdown linting, staticcheck, ProB 1.15.1,
+Beads, GitHub CLI, and shell tooling. Normal development should happen inside
+the Nix shell:
 
 ```bash
 nix develop
@@ -243,6 +244,14 @@ make check
 
 Non-Nix development should remain possible for contributors who already have
 the required tools installed.
+
+## Continuous integration
+
+GitHub Actions runs `make check`, `make check-go-quality`, and
+`make check-machines` inside the Nix dev shell for pushes to `main` and
+`feat/**`, and for pull requests targeting `main`.
+The project-local `nix/probcli.nix` derivation pins ProB 1.15.1 and its runtime
+requirements, including the Java parser.
 
 ## Make targets
 
@@ -255,6 +264,7 @@ languages:
 - `check-specs` validates formal Z design specs with fuzz and ProB.
 - `check-machines` validates B machines with ProB for development/release.
 - `check` runs the automated aggregate gate.
+- `check-go-quality` runs the structural Go quality gate used by `tdd-flow`.
 
 Additional targets:
 
@@ -267,6 +277,7 @@ Additional targets:
 - `check-runtime-spec` — type-check the Circuit runtime Z spec with z-spec
 - `model-check-runtime-spec` — model-check the Circuit runtime Z spec with ProB
 - `smoke-pi` — pi RPC smoke test (requires pi + model API key)
+- `smoke-drive` — Circuit-drives-Pi smoke test (requires pi + model API key)
 - `tools` — install development tools (golangci-lint)
 - `install` — build and install to `~/.local/bin`
 
