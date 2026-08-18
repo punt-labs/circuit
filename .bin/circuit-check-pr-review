@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+set -eu
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+[ -n "${CIRCUIT_SESSION_ID}" ] || fail "CIRCUIT_SESSION_ID is required"
+config=.tmp/circuit/$CIRCUIT_SESSION_ID/pr-watch.env
+
+[ -f "$config" ] || fail "missing pr-watch evidence file: $config"
+
+read_config_key() {
+	awk -v key="$1" '
+		BEGIN { FS = "=" }
+		$1 == key { value = substr($0, index($0, "=") + 1) }
+		END { print value }
+	' "$config"
+}
+
+pr=$(read_config_key PR_NUMBER)
+repo=$(read_config_key REPO)
+
+[ -n "$pr" ] || fail "PR_NUMBER is required in $config"
+[ -n "$repo" ] || fail "REPO is required in $config"
+
+# Use only the most recent review per user. A later APPROVED review from
+# the same user supersedes an earlier CHANGES_REQUESTED.
+set +e
+open_count=$(gh api "repos/$repo/pulls/$pr/reviews" --jq '
+  group_by(.user.login)
+  | map(sort_by(.submitted_at) | last)
+  | map(select(.state == "CHANGES_REQUESTED"))
+  | length
+' 2>&1)
+exit_code=$?
+set -e
+
+[ "$exit_code" -eq 0 ] || {
+	printf '%s\n' "$open_count" >&2
+	fail "gh api reviews failed"
+}
+
+if [ "$open_count" = "0" ]; then
+	printf 'review clean: no outstanding change requests\n'
+	exit 0
+fi
+
+printf 'review has %s outstanding change request(s)\n' "$open_count" >&2
+exit 1

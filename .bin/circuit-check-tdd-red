@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+set -eu
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+[ -n "${CIRCUIT_SESSION_ID}" ] || fail "CIRCUIT_SESSION_ID is required"
+config=.tmp/circuit/$CIRCUIT_SESSION_ID/tdd-red.env
+
+[ -f "$config" ] || fail "missing TDD red evidence file: $config"
+
+read_config_key() {
+	awk -v key="$1" '
+		BEGIN { FS = "=" }
+		$1 == key { value = substr($0, index($0, "=") + 1) }
+		END { print value }
+	' "$config"
+}
+
+package=$(read_config_key TDD_PACKAGE)
+run_pattern=$(read_config_key TDD_RUN)
+expected_fail=$(read_config_key TDD_EXPECTED_FAIL)
+
+[ -n "$package" ] || fail "TDD_PACKAGE is required in $config"
+[ -n "$run_pattern" ] || fail "TDD_RUN is required in $config"
+[ -n "$expected_fail" ] || fail "TDD_EXPECTED_FAIL is required in $config"
+
+set +e
+output=$(go test "$package" -run "$run_pattern" -count=1 2>&1)
+status=$?
+set -e
+
+[ "$status" -ne 0 ] || fail "expected red test passed: $expected_fail"
+
+printf '%s\n' "$output" | grep -qF -- "--- FAIL: $expected_fail" || {
+	printf '%s\n' "$output" >&2
+	fail "test failed but not at expected target: $expected_fail"
+}
+
+printf 'observed expected failing test: %s\n' "$expected_fail"

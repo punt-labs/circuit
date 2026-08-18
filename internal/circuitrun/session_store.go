@@ -14,12 +14,12 @@ import (
 
 func (runtime *Runtime) Suspend() error {
 	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
-		return err
+		return fmt.Errorf("create sessions directory: %w", err)
 	}
 	for _, id := range runtime.persistedSessionIDs() {
 		if _, ok := runtime.sessions[id]; !ok {
 			if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
+				return fmt.Errorf("remove stale session %s: %w", id, err)
 			}
 		}
 	}
@@ -40,11 +40,11 @@ func (runtime *Runtime) loadLegacySuspendedRun() error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("read legacy suspended run: %w", err)
 	}
 	var run Run
 	if err := json.Unmarshal(content, &run); err != nil {
-		return err
+		return fmt.Errorf("parse legacy suspended run: %w", err)
 	}
 	if run.Session != SessionActive {
 		return nil
@@ -70,20 +70,20 @@ func (runtime *Runtime) loadSessions() error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("read sessions directory: %w", err)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		path := filepath.Join(runtime.sessionsDir(), entry.Name())
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) //nolint:gosec // G304: path is session JSON file under .tmp/sessions/
 		if err != nil {
-			return err
+			return fmt.Errorf("read session file %s: %w", entry.Name(), err)
 		}
 		var run Run
 		if err := json.Unmarshal(content, &run); err != nil {
-			return err
+			return fmt.Errorf("parse session file %s: %w", entry.Name(), err)
 		}
 		if run.Session != SessionActive && run.Session != SessionStopped {
 			continue
@@ -129,7 +129,7 @@ func (runtime *Runtime) newSessionID(machineName string) (string, error) {
 		if _, err := os.Stat(runtime.sessionPath(sessionID)); errors.Is(err, os.ErrNotExist) {
 			return sessionID, nil
 		} else if err != nil {
-			return "", err
+			return "", fmt.Errorf("check session path: %w", err)
 		}
 	}
 	return "", fmt.Errorf("could not allocate session id for %s", machineName)
@@ -153,20 +153,23 @@ func isSafeSessionID(id string) bool {
 func randomHex(bytesCount int) (string, error) {
 	buffer := make([]byte, bytesCount)
 	if _, err := rand.Read(buffer); err != nil {
-		return "", err
+		return "", fmt.Errorf("generate random bytes: %w", err)
 	}
 	return hex.EncodeToString(buffer), nil
 }
 
 func (runtime *Runtime) writeSession(run *Run) error {
 	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
-		return err
+		return fmt.Errorf("create sessions directory: %w", err)
 	}
 	content, err := json.MarshalIndent(run, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal session: %w", err)
 	}
-	return os.WriteFile(runtime.sessionPath(run.SessionID), append(content, '\n'), 0o600)
+	if err := os.WriteFile(runtime.sessionPath(run.SessionID), append(content, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write session file: %w", err)
+	}
+	return nil
 }
 
 func (runtime *Runtime) sessionPath(id string) string {
@@ -183,7 +186,7 @@ func (runtime *Runtime) suspendedPath() string {
 
 func (runtime *Runtime) removeLegacySuspendedRun() error {
 	if err := os.Remove(runtime.suspendedPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("remove legacy suspended run: %w", err)
 	}
 	return nil
 }

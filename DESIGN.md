@@ -44,6 +44,12 @@ Circuit accepts only the profile.
 - The profile must remain small enough that the Go evaluator can be
   trusted without a formal proof of its own.
 
+**Profile expansions accepted:**
+
+- `not(<predicate>)`: parenthesised boolean negation. Enables workflows that
+  need to gate on the negation of an observed BOOL fact (for example, TDD `spec
+  -> red` requires `not(testSuitePassed = TRUE)`).
+
 ## ADR 3: Multi-pass parser architecture
 
 **Decision:** The Circuit-B parser uses four explicit passes: lex/parse,
@@ -87,6 +93,10 @@ covered by Go runtime and CLI tests.
   stubs default to `false` so incomplete integrations block safely.
 - Checks run before advance and their results (boolean + invocation
   count) are persisted in the session.
+- Check commands receive session-scoped environment variables such as
+  `CIRCUIT_SESSION_ID`, `CIRCUIT_MACHINE_NAME`, `CIRCUIT_MACHINE_FILE`, and
+  `CIRCUIT_CURRENT_STATE` so project-local evidence can stay isolated per
+  concurrent machine session.
 
 ## ADR 5: Session lifecycle
 
@@ -268,3 +278,154 @@ versions.
 - `make tools` installs the pinned version.
 - `make format` runs `golangci-lint fmt`.
 - `CGO_ENABLED=0` for builds; version injected via ldflags.
+
+## ADR 14: Circuit-driven agent runs use machine-local state prompts
+
+**Decision:** Circuit-driven agent runs combine the current B-machine
+state with a machine-local prompt file at
+`machines/<machine>.prompts.yaml`. The prompt file maps states to
+state-specific work instructions and, optionally, the transition event
+the agent should request when done.
+
+**Evidence:** Plain context injection and generic "respond with an
+event" prompts were insufficient for TDD. The agent needed to know what
+`spec`, `red`, `green`, `qualityReview`, and `refactoring` meant in
+operational terms. Hardcoding `tdd-flow` prompts in the CLI was tried
+and rejected because it made Circuit know machine-specific semantics.
+Moving prompts into `tdd-flow.prompts.yaml` preserved the generic driver
+and made machine behavior data-driven.
+
+**Constraints:**
+
+- Circuit core must not hardcode per-machine prompt text.
+- Prompt files are guidance, not truth. The B machine and checks remain
+  the authority for progress.
+- Missing or malformed prompt files are driver errors for `circuit drive`.
+- Prompt files may be overridden in worktrees for experiments, but the
+  driver must load them as data.
+
+## ADR 15: Circuit drive is the enforcement path; Pi-hosted context is guidance
+
+**Decision:** The enforcement model is `outer Pi/human -> Circuit ->
+inner Pi`. `circuit drive <machine> --task <goal>` starts a machine,
+loads machine prompts, drives `pi --mode rpc`, extracts a requested
+event from the Pi response, runs Circuit checks, and advances only if
+the machine accepts the transition.
+
+**Evidence:** Pi-hosted Circuit context and tools helped the agent see
+state but did not ensure the agent used the machine. The dogfood session
+repeatedly required human reminders. The Circuit-driven path, tested
+with `make smoke-drive`, showed Circuit prompting real Pi, accepting
+valid events, rejecting blocked progress, and reaching terminal state.
+Real `--json` slices were delivered through `tdd-flow` using this path.
+
+**Rejected alternatives:**
+
+- Relying on injected context alone. It informs but does not enforce.
+- Requiring the driven Pi to call a `circuit_advance` tool directly.
+  For the driver path, a plain event response is simpler: Pi requests;
+  Circuit advances.
+- Keeping the old `cmd/circuit-rpc-spike` as the primary interface. It
+  proved feasibility but was not shaped for reusable guided runs.
+
+**Constraints:**
+
+- Pi may request progress but must not decide truth.
+- Circuit owns state, check execution, and transition acceptance.
+- The driver must support re-prompting when no event is extracted or a
+  requested event is blocked.
+- The agent backend is substitutable as long as it implements prompt ->
+  response semantics.
+
+## ADR 16: Driver traces are required for dogfood evaluation
+
+**Decision:** `circuit drive` writes a JSONL trace to
+`.tmp/circuit/<session-id>/drive.jsonl`. The trace records prompts,
+responses, workspace status after each response, and accepted
+transitions.
+
+**Evidence:** Before tracing, a TDD smoke appeared to have produced an
+invalid result, but the final diff was not enough to explain why. After
+adding traces, we could see whether Pi edited tests in `spec`, edited
+production code in `red`, chose `finish` or `refactor`, and which
+transitions Circuit accepted. Tracing also exposed an environment issue:
+a fresh worktree without `.pi/node_modules` made `make check` fail for
+setup reasons and falsely satisfied the red gate.
+
+**Constraints:**
+
+- Trace is driver-level observability, not part of B-machine semantics.
+- Trace files live under the session-scoped `.tmp/circuit/<session-id>/`
+  directory.
+- The trace must record enough information to diagnose process behavior
+  without relying on memory of the run.
+- Future work may type trace events more strongly; current JSONL is the
+  minimal useful form.
+
+## ADR 17: TDD finish is gated by code quality, not agent preference
+
+**Decision:** `tdd-flow` separates `testSuitePassed` from
+`codeQualityPassed`. The machine forces `green -> qualityReview` after
+implementation. From `qualityReview`, `finish` requires
+`codeQualityPassed = TRUE`; otherwise `refactor` is the valid path and
+loops through `refactoring -> green -> qualityReview`.
+
+**Evidence:** A prompt-only refactor suggestion did not reliably make Pi
+choose refactoring. When code quality was made a formal BOOL gate,
+Circuit forced repeated refactoring loops until `make check-go-quality`
+passed. This produced the intended outcome: refactoring was no longer a
+soft preference but the path required by failing quality checks.
+
+**Rejected alternatives:**
+
+- Letting `green` choose directly between `finish` and `refactor`. The
+  agent tended to choose `finish`.
+- Prompting "inspect for refactoring" without a quality gate. This made
+  inspection visible but not enforceable.
+- Treating `make check` as both behavior and quality. Test green and code
+  quality green are different facts.
+
+**Constraints:**
+
+- `tdd-flow` references abstract BOOLs only: `testSuitePassed` and
+  `codeQualityPassed`.
+- Repositories substitute their own quality command through
+  `check-registry.yaml`.
+- `codeQualityPassed` must be useful enough to fail when refactoring is
+  needed, but thresholds can be calibrated separately from the machine.
+
+## ADR 18: Calibrated Go structural quality gate
+
+**Decision:** The initial Go quality gate is
+`make check-go-quality`, running golangci-lint with `dupl`, `gocognit`,
+and `funlen` over production Go code. Thresholds are calibrated to
+produce a small, actionable failure set rather than a flood:
+
+```text
+dupl threshold: 100
+gocognit min-complexity: 20
+funlen lines: 70
+funlen statements: 40
+```
+
+**Evidence:** A very strict `dupl` threshold of 5 produced dozens of
+low-signal one-line duplicates. A looser placeholder target produced no
+signal. The calibrated thresholds produced a small set of failures per
+category, and a real Circuit-driven refactor loop drove that set to zero.
+
+**Rejected alternatives:**
+
+- Leaving `check-go-quality` as `true`. It did not exercise
+  `codeQualityPassed`.
+- Adding many linters at once. It blurred the signal and made dogfood
+  harder to interpret.
+- Using extremely low duplication thresholds as the first enforced gate.
+  It found too many syntactic coincidences before the refactoring loop was
+  ready.
+
+**Constraints:**
+
+- The gate is a starting point, not final policy.
+- It excludes tests for now to focus on production structure.
+- Future tools or stricter thresholds should be introduced through TDD
+  slices and observed through `tdd-flow`.

@@ -1,0 +1,7 @@
+states:
+  idle:
+    prompt: You are idle. Respond with the transition event name.
+    event: start
+  running:
+    prompt: You are running. Respond with the transition event name.
+    event: finish

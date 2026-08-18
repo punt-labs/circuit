@@ -2,6 +2,7 @@ package circuitb
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 )
 
@@ -33,42 +34,8 @@ func (parser *parser) machine() (rawMachine, error) {
 	}
 	machine := rawMachine{Name: name.value, Span: start.span}
 	for !parser.at(tokenEnd) && !parser.at(tokenEOF) {
-		switch {
-		case parser.match(tokenSets):
-			sets, err := parser.sets()
-			if err != nil {
-				return rawMachine{}, err
-			}
-			machine.Sets = sets
-		case parser.match(tokenVariables):
-			variables, err := parser.variableList()
-			if err != nil {
-				return rawMachine{}, err
-			}
-			machine.Variables = variables
-		case parser.match(tokenInvariant):
-			invariant, err := parser.predicateUntilClause()
-			if err != nil {
-				return rawMachine{}, err
-			}
-			machine.HasInvariant = true
-			machine.Invariant = invariant
-		case parser.match(tokenInitialisation):
-			initialisation, err := parser.substitutionUntilClause()
-			if err != nil {
-				return rawMachine{}, err
-			}
-			machine.HasInitialisation = true
-			machine.Initialisation = initialisation
-		case parser.match(tokenOperations):
-			operations, err := parser.operations()
-			if err != nil {
-				return rawMachine{}, err
-			}
-			machine.HasOperations = true
-			machine.Operations = operations
-		default:
-			return rawMachine{}, Diagnostic{Span: parser.current().span, Message: fmt.Sprintf("unexpected %s in machine body", parser.current().value)}
+		if err := parser.machineClause(&machine); err != nil {
+			return rawMachine{}, err
 		}
 	}
 	end, err := parser.expect(tokenEnd, "expected END")
@@ -78,6 +45,47 @@ func (parser *parser) machine() (rawMachine, error) {
 	machine.Span.EndLine = end.span.EndLine
 	machine.Span.EndColumn = end.span.EndColumn
 	return machine, nil
+}
+
+func (parser *parser) machineClause(machine *rawMachine) error {
+	switch {
+	case parser.match(tokenSets):
+		sets, err := parser.sets()
+		if err != nil {
+			return err
+		}
+		machine.Sets = sets
+	case parser.match(tokenVariables):
+		variables, err := parser.variableList()
+		if err != nil {
+			return err
+		}
+		machine.Variables = variables
+	case parser.match(tokenInvariant):
+		invariant, err := parser.predicateUntilClause()
+		if err != nil {
+			return err
+		}
+		machine.HasInvariant = true
+		machine.Invariant = invariant
+	case parser.match(tokenInitialisation):
+		initialisation, err := parser.substitutionUntilClause()
+		if err != nil {
+			return err
+		}
+		machine.HasInitialisation = true
+		machine.Initialisation = initialisation
+	case parser.match(tokenOperations):
+		operations, err := parser.operations()
+		if err != nil {
+			return err
+		}
+		machine.HasOperations = true
+		machine.Operations = operations
+	default:
+		return Diagnostic{Span: parser.current().span, Message: fmt.Sprintf("unexpected %s in machine body", parser.current().value)}
+	}
+	return nil
 }
 
 func isClauseStart(typeof tokenType) bool {
@@ -181,47 +189,17 @@ func (parser *parser) operation() (rawOperation, error) {
 		return rawOperation{}, err
 	}
 	operation := rawOperation{Name: first.value, Span: first.span}
-	if parser.consume(tokenReturn) {
-		operation.Output = &rawIdentifier{Name: first.value, Span: first.span}
-		name, err := parser.expect(tokenIdentifier, "expected query operation name")
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Name = name.value
+	if err := parser.queryOperation(&operation, first); err != nil {
+		return rawOperation{}, err
 	}
-	if parser.consume(tokenLParen) {
-		parameters, err := parser.identifierList(tokenRParen, "expected parameter name")
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Parameters = parameters
-		if _, err := parser.expect(tokenRParen, "expected ) after parameters"); err != nil {
-			return rawOperation{}, err
-		}
+	if err := parser.operationParameters(&operation); err != nil {
+		return rawOperation{}, err
 	}
 	if _, err := parser.expect(tokenEquals, "expected = in operation"); err != nil {
 		return rawOperation{}, err
 	}
-	if parser.consume(tokenPre) {
-		pre, err := parser.predicateUntil(tokenThen)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Pre = pre
-		if _, err := parser.expect(tokenThen, "expected THEN in operation"); err != nil {
-			return rawOperation{}, err
-		}
-		body, err := parser.substitutionUntil(tokenEnd)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Body = body
-	} else {
-		body, err := parser.substitutionUntil(tokenEnd)
-		if err != nil {
-			return rawOperation{}, err
-		}
-		operation.Body = body
+	if err := parser.operationBody(&operation); err != nil {
+		return rawOperation{}, err
 	}
 	end, err := parser.expect(tokenEnd, "expected END after operation")
 	if err != nil {
@@ -230,6 +208,51 @@ func (parser *parser) operation() (rawOperation, error) {
 	operation.Span.EndLine = end.span.EndLine
 	operation.Span.EndColumn = end.span.EndColumn
 	return operation, nil
+}
+
+func (parser *parser) queryOperation(operation *rawOperation, first token) error {
+	if !parser.consume(tokenReturn) {
+		return nil
+	}
+	operation.Output = &rawIdentifier{Name: first.value, Span: first.span}
+	name, err := parser.expect(tokenIdentifier, "expected query operation name")
+	if err != nil {
+		return err
+	}
+	operation.Name = name.value
+	return nil
+}
+
+func (parser *parser) operationParameters(operation *rawOperation) error {
+	if !parser.consume(tokenLParen) {
+		return nil
+	}
+	parameters, err := parser.identifierList(tokenRParen, "expected parameter name")
+	if err != nil {
+		return err
+	}
+	operation.Parameters = parameters
+	_, err = parser.expect(tokenRParen, "expected ) after parameters")
+	return err
+}
+
+func (parser *parser) operationBody(operation *rawOperation) error {
+	if !parser.consume(tokenPre) {
+		body, err := parser.substitutionUntil(tokenEnd)
+		operation.Body = body
+		return err
+	}
+	pre, err := parser.predicateUntil(tokenThen)
+	if err != nil {
+		return err
+	}
+	operation.Pre = pre
+	if _, err := parser.expect(tokenThen, "expected THEN in operation"); err != nil {
+		return err
+	}
+	body, err := parser.substitutionUntil(tokenEnd)
+	operation.Body = body
+	return err
 }
 
 func (parser *parser) predicateUntil(end tokenType) (rawPredicate, error) {
@@ -244,68 +267,94 @@ func (parser *parser) predicateUntil(end tokenType) (rawPredicate, error) {
 }
 
 func (parser *parser) disjunction() (rawPredicate, error) {
-	left, err := parser.conjunction()
-	if err != nil {
-		return nil, err
-	}
-	for parser.consume(tokenOr) {
-		operator := parser.previous()
-		right, err := parser.conjunction()
-		if err != nil {
-			return nil, err
-		}
-		span := left.predicateSpan()
-		span.EndLine = right.predicateSpan().EndLine
-		span.EndColumn = right.predicateSpan().EndColumn
-		left = rawBinaryPredicate{Operator: operator.value, Left: left, Right: right, Span: span}
-	}
-	return left, nil
+	return parser.binaryPredicate(parser.conjunction, tokenOr)
 }
 
 func (parser *parser) conjunction() (rawPredicate, error) {
-	left, err := parser.atom()
+	return parser.binaryPredicate(parser.atom, tokenAmpersand)
+}
+
+func (parser *parser) binaryPredicate(next func() (rawPredicate, error), operatorToken tokenType) (rawPredicate, error) {
+	left, err := next()
 	if err != nil {
 		return nil, err
 	}
-	for parser.consume(tokenAmpersand) {
+	for parser.consume(operatorToken) {
 		operator := parser.previous()
-		right, err := parser.atom()
+		right, err := next()
 		if err != nil {
 			return nil, err
 		}
-		span := left.predicateSpan()
-		span.EndLine = right.predicateSpan().EndLine
-		span.EndColumn = right.predicateSpan().EndColumn
-		left = rawBinaryPredicate{Operator: operator.value, Left: left, Right: right, Span: span}
+		left = rawBinaryPredicate{Operator: operator.value, Left: left, Right: right, Span: predicateSpan(left, right)}
 	}
 	return left, nil
 }
 
+func predicateSpan(left rawPredicate, right rawPredicate) Span {
+	result := left.predicateSpan()
+	result.EndLine = right.predicateSpan().EndLine
+	result.EndColumn = right.predicateSpan().EndColumn
+	return result
+}
+
 func (parser *parser) atom() (rawPredicate, error) {
+	if parser.consume(tokenNot) {
+		return parser.notPredicate(parser.previous().span)
+	}
 	if parser.consume(tokenLParen) {
-		predicate, err := parser.disjunction()
-		if err != nil {
-			return nil, err
-		}
-		if _, err := parser.expect(tokenRParen, "expected ) after predicate"); err != nil {
-			return nil, err
-		}
-		return predicate, nil
+		return parser.parenthesizedPredicate()
 	}
 	left, err := parser.expression()
 	if err != nil {
 		return nil, err
 	}
 	if parser.consume(tokenColon) {
-		setExpression, err := parser.setExpression()
-		if err != nil {
-			return nil, err
-		}
-		span := left.expressionSpan()
-		span.EndLine = setExpression.setExpressionSpan().EndLine
-		span.EndColumn = setExpression.setExpressionSpan().EndColumn
-		return rawMembershipPredicate{Element: left, Set: setExpression, Span: span}, nil
+		return parser.membershipPredicate(left)
 	}
+	return parser.comparisonPredicate(left)
+}
+
+func (parser *parser) notPredicate(start Span) (rawPredicate, error) {
+	if _, err := parser.expect(tokenLParen, "expected ( after not"); err != nil {
+		return nil, err
+	}
+	inner, err := parser.disjunction()
+	if err != nil {
+		return nil, err
+	}
+	end, err := parser.expect(tokenRParen, "expected ) after not predicate")
+	if err != nil {
+		return nil, err
+	}
+	resultSpan := start
+	resultSpan.EndLine = end.span.EndLine
+	resultSpan.EndColumn = end.span.EndColumn
+	return rawNotPredicate{Inner: inner, Span: resultSpan}, nil
+}
+
+func (parser *parser) parenthesizedPredicate() (rawPredicate, error) {
+	predicate, err := parser.disjunction()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := parser.expect(tokenRParen, "expected ) after predicate"); err != nil {
+		return nil, err
+	}
+	return predicate, nil
+}
+
+func (parser *parser) membershipPredicate(left rawExpression) (rawPredicate, error) {
+	setExpression, err := parser.setExpression()
+	if err != nil {
+		return nil, err
+	}
+	span := left.expressionSpan()
+	span.EndLine = setExpression.setExpressionSpan().EndLine
+	span.EndColumn = setExpression.setExpressionSpan().EndColumn
+	return rawMembershipPredicate{Element: left, Set: setExpression, Span: span}, nil
+}
+
+func (parser *parser) comparisonPredicate(left rawExpression) (rawPredicate, error) {
 	operator, err := parser.expectAny([]tokenType{tokenEquals, tokenNotEquals, tokenLess, tokenLessEqual, tokenGreater, tokenGreaterEqual}, "expected predicate operator")
 	if err != nil {
 		return nil, err
@@ -504,10 +553,8 @@ func (parser *parser) identifierList(end tokenType, message string) ([]rawIdenti
 }
 
 func (parser *parser) expectAny(types []tokenType, message string) (token, error) {
-	for _, typeof := range types {
-		if parser.at(typeof) {
-			return parser.advance(), nil
-		}
+	if slices.ContainsFunc(types, parser.at) {
+		return parser.advance(), nil
 	}
 	return token{}, Diagnostic{Span: parser.current().span, Message: message}
 }
@@ -561,6 +608,7 @@ func tokenName(typeof tokenType) string {
 		return "OPERATIONS"
 	case tokenInvariant:
 		return "INVARIANT"
+	default:
+		return fmt.Sprintf("token %d", typeof)
 	}
-	return fmt.Sprintf("token %d", typeof)
 }

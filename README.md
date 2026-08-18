@@ -48,7 +48,8 @@ Implemented now:
   `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
   `circuit_advance`, `circuit_stop`, `circuit_unload`), and `/circuit` slash
   commands for human control
-- B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`
+- B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`,
+  `tdd-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
 - multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
   session IDs and auto-stop on terminal states
@@ -59,6 +60,8 @@ Implemented now:
 - check bindings for runtime preconditions with invocation tracking; machines
   with BOOL facts must load with complete bindings before they can start
 - `retry-flow` machine proving block/retry loops work
+- `tdd-flow` machine modeling red-green-refactor with external checks for
+  observed failing tests and passing test suites
 - ProB development gate: `make check-machines`
 - automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
   smoke test
@@ -165,8 +168,14 @@ Runtime preconditions that depend on the outside world are represented as B
 booleans and bound to registered checks outside B. For example,
 `review-flow.mch` requires `makeCheckPassed = TRUE` before advancing from
 `coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
-`makeCheck` registry entry in `check-registry.yaml`. A machine with BOOL facts
-must load with complete bindings before it can start. Use
+`makeCheck` registry entry in `check-registry.yaml`. `tdd-flow.mch` uses the
+same pattern for red-green-refactor discipline: `writeTest` requires
+`not(testSuitePassed = TRUE)` while `implement`, `reviewQuality`, and
+`keepGreen` require `testSuitePassed = TRUE`. `finish` requires a separate
+`codeQualityPassed = TRUE`, and `refactor` is available from `qualityReview`
+when code quality is not passing. Circuit-B supports `not(...)` for these
+negated gates, so no separate "failing test observed" fact is needed. A machine
+with BOOL facts must load with complete bindings before it can start. Use
 `circuit scaffold <machine>` to generate missing bindings and registry stubs;
 stubs default to `false`, so incomplete integrations block safely.
 
@@ -358,7 +367,8 @@ Done:
 
 Done:
 
-- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`
+- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`,
+  `machines/tdd-flow.mch`
 - ProB development gate: `make check-machines`
 - multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
 - multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/punt-labs/circuit/internal/circuitb"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,11 +49,11 @@ func (runtime *Runtime) Start(machineName string) (string, StatusReport, error) 
 	machineFile := runtime.resolveMachineFile(machineName)
 	machine, err := circuitb.LoadFile(machineFile)
 	if err != nil {
-		return "", StatusReport{}, err
+		return "", StatusReport{}, fmt.Errorf("load machine %s: %w", machineName, err)
 	}
 	report, err := machine.State(nil)
 	if err != nil {
-		return "", StatusReport{}, err
+		return "", StatusReport{}, fmt.Errorf("get initial state: %w", err)
 	}
 	id, err := runtime.newSessionID(machineName)
 	if err != nil {
@@ -169,7 +170,7 @@ func (runtime *Runtime) UnloadByID(id string) error {
 		runtime.currentID = ""
 	}
 	if err := os.Remove(runtime.sessionPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("remove session file: %w", err)
 	}
 	if len(runtime.knownSessionIDs()) == 0 {
 		runtime.lastState = SessionUnloaded
@@ -180,7 +181,7 @@ func (runtime *Runtime) UnloadByID(id string) error {
 func (runtime *Runtime) ListMachines() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(runtime.root, "machines"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read machines directory: %w", err)
 	}
 	names := []string{}
 	for _, entry := range entries {
@@ -200,14 +201,14 @@ func (runtime *Runtime) SuspendedPath() string {
 func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error) {
 	machine, err := circuitb.LoadFile(run.MachineFile)
 	if err != nil {
-		return AdvanceReport{}, err
+		return AdvanceReport{}, fmt.Errorf("load machine %s: %w", run.MachineName, err)
 	}
 	if err := runtime.runChecks(run); err != nil {
 		return AdvanceReport{}, err
 	}
 	result, err := machine.AdvanceFromWithBooleans(event, run.Current, run.Booleans)
 	if err != nil {
-		return AdvanceReport{}, err
+		return AdvanceReport{}, fmt.Errorf("advance machine: %w", err)
 	}
 	report := AdvanceReport{
 		SessionID: run.SessionID,
@@ -232,11 +233,11 @@ func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error
 func (runtime *Runtime) statusForRun(run *Run) (StatusReport, error) {
 	machine, err := circuitb.LoadFile(run.MachineFile)
 	if err != nil {
-		return StatusReport{}, err
+		return StatusReport{}, fmt.Errorf("load machine %s: %w", run.MachineName, err)
 	}
 	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
 	if err != nil {
-		return StatusReport{}, err
+		return StatusReport{}, fmt.Errorf("get machine state: %w", err)
 	}
 	return runtime.statusFromReport(run, report), nil
 }
@@ -253,26 +254,26 @@ func (runtime *Runtime) statusFromReport(run *Run, report circuitb.StateReport) 
 	}
 }
 
-func (runtime *Runtime) singleKnownSession() (*Run, error) {
-	ids := runtime.knownSessionIDs()
+func (runtime *Runtime) singleSessionByIDs(ids []string, noneErr, manyFmt string) (*Run, error) {
 	if len(ids) == 0 {
-		return nil, errors.New("no session; run: circuit start <machine>")
+		return nil, errors.New(noneErr)
 	}
 	if len(ids) > 1 {
-		return nil, fmt.Errorf("multiple sessions; specify one of: %s", strings.Join(ids, ", "))
+		return nil, fmt.Errorf("%s; specify one of: %s", manyFmt, strings.Join(ids, ", "))
 	}
 	return runtime.sessions[ids[0]], nil
 }
 
+func (runtime *Runtime) singleKnownSession() (*Run, error) {
+	return runtime.singleSessionByIDs(runtime.knownSessionIDs(),
+		"no session; run: circuit start <machine>",
+		"multiple sessions")
+}
+
 func (runtime *Runtime) singleActiveSession() (*Run, error) {
-	ids := runtime.activeSessionIDs()
-	if len(ids) == 0 {
-		return nil, errors.New("no active session; run: circuit start <machine>")
-	}
-	if len(ids) > 1 {
-		return nil, fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(ids, ", "))
-	}
-	return runtime.sessions[ids[0]], nil
+	return runtime.singleSessionByIDs(runtime.activeSessionIDs(),
+		"no active session; run: circuit start <machine>",
+		"multiple active sessions")
 }
 
 func (runtime *Runtime) knownSessionByID(id string) (*Run, error) {
@@ -326,11 +327,37 @@ func (runtime *Runtime) isTerminal(run *Run) bool {
 	if err != nil {
 		return false
 	}
-	report, err := machine.StateAtWithBooleans(run.Current, run.Booleans)
-	if err != nil {
-		return false
+	variables := machine.BooleanVariables()
+	if len(variables) == 0 {
+		report, stateErr := machine.StateAtWithBooleans(run.Current, run.Booleans)
+		return stateErr == nil && len(report.Enabled) == 0
 	}
-	return len(report.Enabled) == 0
+	for _, booleans := range booleanValuations(variables, run.Booleans) {
+		report, stateErr := machine.StateAtWithBooleans(run.Current, booleans)
+		if stateErr == nil && len(report.Enabled) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+const maxBooleanValuationVariables = 16
+
+func booleanValuations(variables []string, base map[string]bool) []map[string]bool {
+	if len(variables) > maxBooleanValuationVariables {
+		variables = variables[:maxBooleanValuationVariables]
+	}
+	count := 1 << len(variables)
+	valuations := make([]map[string]bool, 0, count)
+	for bits := range count {
+		valuation := map[string]bool{}
+		maps.Copy(valuation, base)
+		for index, variable := range variables {
+			valuation[variable] = bits&(1<<index) != 0
+		}
+		valuations = append(valuations, valuation)
+	}
+	return valuations
 }
 
 func (runtime *Runtime) resolveMachineFile(path string) string {
@@ -342,8 +369,6 @@ func (runtime *Runtime) resolveMachineFile(path string) string {
 
 func cloneChecks(checks map[string]CheckRuntime) map[string]CheckRuntime {
 	clone := map[string]CheckRuntime{}
-	for key, value := range checks {
-		clone[key] = value
-	}
+	maps.Copy(clone, checks)
 	return clone
 }

@@ -247,8 +247,8 @@ func TestRuntimeListsMachinesAndReportsSuspendedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list machines: %v", err)
 	}
-	if len(machines) != 3 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" {
-		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow", machines)
+	if len(machines) != 4 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" || machines[3] != "tdd-flow" {
+		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow/tdd-flow", machines)
 	}
 	if runtime.SuspendedPath() != filepath.Join(root, ".tmp", "circuit.suspended.json") {
 		t.Fatalf("suspended path = %s", runtime.SuspendedPath())
@@ -405,6 +405,123 @@ func TestRuntimeRetryAfterBlockedCheck(t *testing.T) {
 	}
 }
 
+func TestRuntimeBlocksTDDFlowWhenSuiteIsPassing(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "true", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("tdd-flow"); err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+
+	report, err := runtime.Advance("writeTest")
+	if err != nil {
+		t.Fatalf("advance writeTest: %v", err)
+	}
+	if report.Allowed {
+		t.Fatalf("writeTest unexpectedly allowed: %#v", report)
+	}
+	check := report.Checks["testSuitePassed"]
+	if !check.LastResult || check.Invocations != 1 {
+		t.Fatalf("testSuitePassed check = %#v, want true once", check)
+	}
+	if !runtime.IsActive() {
+		t.Fatal("externally gated tdd-flow should remain active while blocked")
+	}
+}
+
+func TestRuntimePassesSessionEnvironmentToChecks(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	sessionID, _, err := runtime.Start("tdd-flow")
+	if err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+
+	// Without session-scoped stamp: suite is failing so writeTest is allowed.
+	allowed, err := runtime.Advance("writeTest")
+	if err != nil {
+		t.Fatalf("advance without session stamp: %v", err)
+	}
+	if !allowed.Allowed || allowed.To != "red" {
+		t.Fatalf("advance without stamp = %#v, want red", allowed)
+	}
+
+	// After session-scoped stamp: suite is passing so implement transitions.
+	sessionPath := filepath.Join(root, ".tmp", "circuit", sessionID, "suite-green.stamp")
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o700); err != nil {
+		t.Fatalf("create session stamp dir: %v", err)
+	}
+	if err := os.WriteFile(sessionPath, []byte("session stamp"), 0o600); err != nil {
+		t.Fatalf("write session stamp: %v", err)
+	}
+	green, err := runtime.Advance("implement")
+	if err != nil {
+		t.Fatalf("advance implement with stamp: %v", err)
+	}
+	if !green.Allowed || green.To != "green" {
+		t.Fatalf("implement with stamp = %#v, want green", green)
+	}
+}
+
+func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	writeTDDRegistry(t, root, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	sessionID, _, err := runtime.Start("tdd-flow")
+	if err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+	stampPath := filepath.Join(root, ".tmp", "circuit", sessionID, "suite-green.stamp")
+	if err := os.MkdirAll(filepath.Dir(stampPath), 0o700); err != nil {
+		t.Fatalf("create session stamp dir: %v", err)
+	}
+
+	steps := []struct {
+		event      string
+		to         string
+		suiteGreen bool
+	}{
+		{event: "writeTest", to: "red", suiteGreen: false},
+		{event: "implement", to: "green", suiteGreen: true},
+		{event: "reviewQuality", to: "qualityReview", suiteGreen: true},
+		{event: "finish", to: "done", suiteGreen: true},
+	}
+	for _, step := range steps {
+		if step.suiteGreen {
+			if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
+				t.Fatalf("write stamp: %v", err)
+			}
+		} else {
+			if err := os.Remove(stampPath); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove stamp: %v", err)
+			}
+		}
+		report, advanceErr := runtime.Advance(step.event)
+		if advanceErr != nil {
+			t.Fatalf("advance %s: %v", step.event, advanceErr)
+		}
+		if !report.Allowed || report.To != step.to {
+			t.Fatalf("advance %s = %#v, want %s", step.event, report, step.to)
+		}
+	}
+	if runtime.IsActive() {
+		t.Fatal("tdd-flow should auto-stop at done")
+	}
+}
+
 func testRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -412,7 +529,7 @@ func testRoot(t *testing.T) string {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyFixture(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return root
@@ -438,6 +555,18 @@ func writeRegistry(t *testing.T, root string, command string) {
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
+	t.Helper()
+	if strings.TrimSpace(testSuiteCommand) == "" || strings.TrimSpace(codeQualityCommand) == "" {
+		t.Fatal("commands must not be empty")
+	}
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
 	}
 }
 

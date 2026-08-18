@@ -74,49 +74,78 @@ func (lexer *lexer) number() token {
 func (lexer *lexer) operator() (token, error) {
 	start := lexer.spanAtCurrent()
 	current := lexer.advance()
-	if current == '<' && lexer.match('-') && lexer.match('-') {
-		return lexer.complete(start, tokenReturn, "<--"), nil
+	if typeof, value, ok := lexer.compoundOperator(current); ok {
+		return lexer.complete(start, typeof, value), nil
 	}
-	if current == ':' && lexer.match('=') {
-		return lexer.complete(start, tokenAssign, ":="), nil
-	}
-	if current == '/' && lexer.match('=') {
-		return lexer.complete(start, tokenNotEquals, "/="), nil
-	}
-	if current == '<' && lexer.match('=') {
-		return lexer.complete(start, tokenLessEqual, "<="), nil
-	}
-	if current == '>' && lexer.match('=') {
-		return lexer.complete(start, tokenGreaterEqual, ">="), nil
-	}
-	if current == '|' && lexer.match('|') {
-		return lexer.complete(start, tokenParallel, "||"), nil
-	}
-	switch current {
-	case ':':
-		return lexer.complete(start, tokenColon, ":"), nil
-	case ';':
-		return lexer.complete(start, tokenSemicolon, ";"), nil
-	case ',':
-		return lexer.complete(start, tokenComma, ","), nil
-	case '(':
-		return lexer.complete(start, tokenLParen, "("), nil
-	case ')':
-		return lexer.complete(start, tokenRParen, ")"), nil
-	case '{':
-		return lexer.complete(start, tokenLBrace, "{"), nil
-	case '}':
-		return lexer.complete(start, tokenRBrace, "}"), nil
-	case '=':
-		return lexer.complete(start, tokenEquals, "="), nil
-	case '<':
-		return lexer.complete(start, tokenLess, "<"), nil
-	case '>':
-		return lexer.complete(start, tokenGreater, ">"), nil
-	case '&':
-		return lexer.complete(start, tokenAmpersand, "&"), nil
+	if typeof, value, ok := simpleOperator(current); ok {
+		return lexer.complete(start, typeof, value), nil
 	}
 	return token{}, Diagnostic{Span: start, Message: fmt.Sprintf("unexpected character %q", current)}
+}
+
+func (lexer *lexer) tryReturn() bool {
+	r0, ok0 := lexer.peekAt(0)
+	if !ok0 || r0 != '-' {
+		return false
+	}
+	r1, ok1 := lexer.peekAt(1)
+	if !ok1 || r1 != '-' {
+		return false
+	}
+	lexer.advance()
+	lexer.advance()
+	return true
+}
+
+func (lexer *lexer) compoundOperator(current rune) (tokenType, string, bool) {
+	// "<--" uses safe two-character lookahead before consuming.
+	if current == '<' && lexer.tryReturn() {
+		return tokenReturn, "<--", true
+	}
+	if current == ':' && lexer.match('=') {
+		return tokenAssign, ":=", true
+	}
+	if current == '/' && lexer.match('=') {
+		return tokenNotEquals, "/=", true
+	}
+	if current == '<' && lexer.match('=') {
+		return tokenLessEqual, "<=", true
+	}
+	if current == '>' && lexer.match('=') {
+		return tokenGreaterEqual, ">=", true
+	}
+	if current == '|' && lexer.match('|') {
+		return tokenParallel, "||", true
+	}
+	return tokenEOF, "", false
+}
+
+func simpleOperator(current rune) (tokenType, string, bool) {
+	switch current {
+	case ':':
+		return tokenColon, ":", true
+	case ';':
+		return tokenSemicolon, ";", true
+	case ',':
+		return tokenComma, ",", true
+	case '(':
+		return tokenLParen, "(", true
+	case ')':
+		return tokenRParen, ")", true
+	case '{':
+		return tokenLBrace, "{", true
+	case '}':
+		return tokenRBrace, "}", true
+	case '=':
+		return tokenEquals, "=", true
+	case '<':
+		return tokenLess, "<", true
+	case '>':
+		return tokenGreater, ">", true
+	case '&':
+		return tokenAmpersand, "&", true
+	}
+	return tokenEOF, "", false
 }
 
 func (lexer *lexer) complete(span Span, typeof tokenType, value string) token {
@@ -151,6 +180,14 @@ func (lexer *lexer) advance() rune {
 
 func (lexer *lexer) peek() rune {
 	return lexer.input[lexer.index]
+}
+
+func (lexer *lexer) peekAt(offset int) (rune, bool) {
+	index := lexer.index + offset
+	if index >= len(lexer.input) {
+		return 0, false
+	}
+	return lexer.input[index], true
 }
 
 func (lexer *lexer) done() bool {

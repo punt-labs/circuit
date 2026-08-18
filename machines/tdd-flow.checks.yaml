@@ -1,0 +1,5 @@
+checks:
+  codeQualityPassed:
+    use: codeQualityPassed
+  testSuitePassed:
+    use: testSuitePassed

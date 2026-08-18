@@ -1,0 +1,54 @@
+#!/usr/bin/env sh
+set -eu
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+[ -n "${CIRCUIT_SESSION_ID}" ] || fail "CIRCUIT_SESSION_ID is required"
+config=.tmp/circuit/$CIRCUIT_SESSION_ID/pr-watch.env
+
+[ -f "$config" ] || fail "missing pr-watch evidence file: $config"
+
+read_config_key() {
+	awk -v key="$1" '
+		BEGIN { FS = "=" }
+		$1 == key { value = substr($0, index($0, "=") + 1) }
+		END { print value }
+	' "$config"
+}
+
+pr=$(read_config_key PR_NUMBER)
+repo=$(read_config_key REPO)
+
+[ -n "$pr" ] || fail "PR_NUMBER is required in $config"
+[ -n "$repo" ] || fail "REPO is required in $config"
+
+skip_ci=$(read_config_key SKIP_CI_CHECK)
+if [ "$skip_ci" = "true" ]; then
+	printf 'CI check skipped (no GitHub Actions configured for this repo)\n'
+	exit 0
+fi
+
+# Use structured JSON output to avoid brittle text parsing.
+# Counts checks that are not in a passing or skipped state.
+set +e
+failing=$(gh pr checks "$pr" -R "$repo" --json state,name --jq '
+  [.[] | select(.state | ascii_downcase | test("^(pass|success|skip|neutral|completed)$") | not)] | length
+' 2>&1)
+exit_code=$?
+set -e
+
+if [ "$exit_code" -ne 0 ]; then
+	printf '%s\n' "$failing" >&2
+	fail "gh pr checks failed"
+fi
+
+if [ "$failing" = "0" ]; then
+	printf 'all PR checks green\n'
+	exit 0
+fi
+
+printf '%s check(s) not yet passing\n' "$failing" >&2
+exit 1

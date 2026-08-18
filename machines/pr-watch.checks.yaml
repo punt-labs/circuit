@@ -1,0 +1,5 @@
+checks:
+  checksGreen:
+    use: prChecksGreen
+  reviewClean:
+    use: prReviewClean

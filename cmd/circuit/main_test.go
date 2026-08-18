@@ -2,11 +2,39 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestUsageDocumentsJSONFlagForAllCommands(t *testing.T) {
+	t.Parallel()
+	stderr := &bytes.Buffer{}
+	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr, cwd: t.TempDir()}
+	_ = cmd.run([]string{"--help"})
+	usage := stderr.String()
+	for _, want := range []string{
+		"start",
+		"stop",
+		"status [--json]",
+		"advance [--json]",
+		"load [--json]",
+		"scaffold [--json]",
+		"unload [--json]",
+	} {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("usage missing %q:\n%s", want, usage)
+		}
+	}
+	if !strings.Contains(usage, "start [--json]") {
+		t.Fatalf("usage does not document --json for start:\n%s", usage)
+	}
+	if !strings.Contains(usage, "stop [--json]") {
+		t.Fatalf("usage does not document --json for stop:\n%s", usage)
+	}
+}
 
 func TestBMachineList(t *testing.T) {
 	t.Parallel()
@@ -19,8 +47,22 @@ func TestBMachineList(t *testing.T) {
 		t.Fatalf("list returned error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "build-job") || !strings.Contains(output, "pr-watch") {
+	if !strings.Contains(output, "build-job") || !strings.Contains(output, "pr-watch") || !strings.Contains(output, "tdd-flow") {
 		t.Fatalf("list output mismatch: %q", output)
+	}
+}
+
+func TestCheckGoQualityIncludesQualityLinters(t *testing.T) {
+	t.Parallel()
+	content, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	makefile := string(content)
+	for _, linter := range []string{"dupl", "gocognit", "funlen", "goconst", "gocritic", "maintidx"} {
+		if !strings.Contains(makefile, linter) {
+			t.Fatalf("check-go-quality must enable %s", linter)
+		}
 	}
 }
 
@@ -35,6 +77,30 @@ func TestBMachineLoadValidatesChecks(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "loaded: review-flow") || !strings.Contains(output, "makeCheckPassed -> makeCheck: BOOL") {
 		t.Fatalf("load output mismatch: %q", output)
+	}
+}
+
+func TestBMachineLoadJSONReportsCheckBindings(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"load", "--json", "review-flow"}); err != nil {
+		t.Fatalf("load --json returned error: %v", err)
+	}
+	var report loadJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("load --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Machine != "review-flow" {
+		t.Fatalf("machine = %q, want review-flow", report.Machine)
+	}
+	if len(report.Checks) != 1 {
+		t.Fatalf("checks = %#v, want one check binding", report.Checks)
+	}
+	check := report.Checks[0]
+	if check.Variable != "makeCheckPassed" || check.Use != "makeCheck" || check.Returns != "BOOL" {
+		t.Fatalf("check binding = %#v, want makeCheckPassed -> makeCheck: BOOL", check)
 	}
 }
 
@@ -68,6 +134,35 @@ func TestBMachineScaffoldGeneratesFailingCheckStubs(t *testing.T) {
 	}
 }
 
+func TestBMachineScaffoldJSONReportsGeneratedStubs(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "review-flow.checks.yaml")); err != nil {
+		t.Fatalf("remove bindings: %v", err)
+	}
+	if err := os.Remove(filepath.Join(cmd.cwd, "machines", "check-registry.yaml")); err != nil {
+		t.Fatalf("remove registry: %v", err)
+	}
+
+	if err := cmd.run([]string{"scaffold", "--json", "review-flow"}); err != nil {
+		t.Fatalf("scaffold --json returned error: %v", err)
+	}
+	var report scaffoldJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("scaffold --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Machine != "review-flow" {
+		t.Fatalf("machine = %q, want review-flow", report.Machine)
+	}
+	if len(report.GeneratedBindings) != 1 || report.GeneratedBindings[0] != "makeCheckPassed" {
+		t.Fatalf("generated bindings = %#v, want makeCheckPassed", report.GeneratedBindings)
+	}
+	if len(report.GeneratedRegistryIDs) != 1 || report.GeneratedRegistryIDs[0] != "makeCheckPassed" {
+		t.Fatalf("generated registry IDs = %#v, want makeCheckPassed", report.GeneratedRegistryIDs)
+	}
+}
+
 func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
@@ -80,6 +175,108 @@ func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
 		t.Fatalf("start error = %v, want unbound BOOL variable", err)
 	}
+}
+
+func TestBMachineStartJSONReportsStartedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "--json", "build-job"}); err != nil {
+		t.Fatalf("start --json returned error: %v", err)
+	}
+	var report statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("start --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session == "" {
+		t.Fatalf("start --json missing session id: %#v", report)
+	}
+	if report.SessionState != "active" || report.Machine != "build-job" || report.Current != "idle" {
+		t.Fatalf("start --json report = %#v, want active build-job at idle", report)
+	}
+	if len(report.Enabled) == 0 || len(report.Blocked) == 0 {
+		t.Fatalf("start --json missing operations: %#v", report)
+	}
+}
+
+func TestAdvanceJSONReportsAllowedAndBlockedTransitions(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "--json", "start"}); err != nil {
+		t.Fatalf("advance --json start returned error: %v", err)
+	}
+	var allowed advanceJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &allowed); err != nil {
+		t.Fatalf("allowed advance output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if !allowed.Allowed || allowed.Event != "start" || allowed.From != "idle" || allowed.To != "running" {
+		t.Fatalf("allowed advance json = %#v, want idle -> running", allowed)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start second build-job returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "--json", "finish", sessionID}); err != nil {
+		t.Fatalf("advance --json finish returned error: %v", err)
+	}
+	var blocked advanceJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &blocked); err != nil {
+		t.Fatalf("blocked advance output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if blocked.Allowed || blocked.Event != "finish" || blocked.From != "idle" || len(blocked.Failed) == 0 {
+		t.Fatalf("blocked advance json = %#v, want blocked finish from idle with failed predicates", blocked)
+	}
+}
+
+func TestStatusJSONReportsAllSessions(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start first build-job: %v", err)
+	}
+	first := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "start", first}); err != nil {
+		t.Fatalf("advance first start: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start second build-job: %v", err)
+	}
+	second := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "start", second}); err != nil {
+		t.Fatalf("advance second start: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "finish", second}); err != nil {
+		t.Fatalf("advance second finish: %v", err)
+	}
+
+	stdout.Reset()
+	if err := cmd.run([]string{"status", "--json"}); err != nil {
+		t.Fatalf("status --json returned error: %v", err)
+	}
+	var reports []statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatalf("status --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if len(reports) != 2 {
+		t.Fatalf("json report count = %d, want 2: %#v", len(reports), reports)
+	}
+	assertStatusJSON(t, reports, first, "active", "running")
+	assertStatusJSON(t, reports, second, "stopped", "done")
 }
 
 func TestBMachineStartStatusAdvance(t *testing.T) {
@@ -295,6 +492,34 @@ func TestReviewFlowBlocksWhenBoundCheckFails(t *testing.T) {
 	}
 }
 
+func TestPRWatchAdvancesToDone(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	writePRWatchRegistry(t, cmd.cwd, "true", "true")
+
+	if err := cmd.run([]string{"start", "pr-watch"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "current: watch") {
+		t.Fatalf("start output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "needsWork"}); err != nil {
+		t.Fatalf("advance needsWork returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: watch -> fixing") {
+		t.Fatalf("advance needsWork output mismatch: %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "fixed"}); err != nil {
+		t.Fatalf("advance fixed returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "advanced: fixing -> done") {
+		t.Fatalf("advance fixed output mismatch: %q", stdout.String())
+	}
+}
+
 func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -321,6 +546,62 @@ func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "advanced: waiting -> done") {
 		t.Fatalf("advance 2 not allowed: %q", stdout.String())
+	}
+}
+
+func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
+
+	if err := cmd.run([]string{"start", "tdd-flow"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stampPath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "suite-green.stamp")
+	if err := os.MkdirAll(filepath.Dir(stampPath), 0o700); err != nil {
+		t.Fatalf("create stamp dir: %v", err)
+	}
+
+	// With suite currently passing, spec -> red is blocked.
+	if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
+		t.Fatalf("write stamp: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"advance", "writeTest"}); err != nil {
+		t.Fatalf("advance writeTest with suite green returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "blocked: Advance(writeTest)") {
+		t.Fatalf("advance writeTest with suite green output mismatch: %q", stdout.String())
+	}
+
+	for _, step := range []struct {
+		event      string
+		suiteGreen bool
+		want       string
+	}{
+		{event: "writeTest", suiteGreen: false, want: "advanced: spec -> red"},
+		{event: "implement", suiteGreen: true, want: "advanced: red -> green"},
+		{event: "reviewQuality", suiteGreen: true, want: "advanced: green -> qualityReview"},
+		{event: "finish", suiteGreen: true, want: "advanced: qualityReview -> done"},
+	} {
+		if step.suiteGreen {
+			if err := os.WriteFile(stampPath, []byte("green"), 0o600); err != nil {
+				t.Fatalf("write stamp: %v", err)
+			}
+		} else {
+			if err := os.Remove(stampPath); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove stamp: %v", err)
+			}
+		}
+		stdout.Reset()
+		if err := cmd.run([]string{"advance", step.event}); err != nil {
+			t.Fatalf("advance %s returned error: %v", step.event, err)
+		}
+		if !strings.Contains(stdout.String(), step.want) {
+			t.Fatalf("advance %s output = %q, want %q", step.event, stdout.String(), step.want)
+		}
 	}
 }
 
@@ -352,6 +633,34 @@ func TestBMachineStop(t *testing.T) {
 	}
 }
 
+func TestBMachineStopJSONReportsStoppedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", "--json", sessionID}); err != nil {
+		t.Fatalf("stop --json returned error: %v", err)
+	}
+	var report statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("stop --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session != sessionID {
+		t.Fatalf("session = %q, want %q", report.Session, sessionID)
+	}
+	if report.SessionState != "stopped" || report.Machine != "build-job" || report.Current != "idle" {
+		t.Fatalf("stop --json report = %#v, want stopped build-job at idle", report)
+	}
+	if len(report.Enabled) == 0 || len(report.Blocked) == 0 {
+		t.Fatalf("stop --json missing operations: %#v", report)
+	}
+}
+
 func TestBMachineUnloadStoppedSession(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
@@ -378,6 +687,35 @@ func TestBMachineUnloadStoppedSession(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "no session") {
 		t.Fatalf("status after unload mismatch: %q", stdout.String())
+	}
+}
+
+func TestBMachineUnloadJSONReportsUnloadedSession(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+
+	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+		t.Fatalf("start returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	stdout.Reset()
+	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+		t.Fatalf("stop returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"unload", "--json", sessionID}); err != nil {
+		t.Fatalf("unload --json returned error: %v", err)
+	}
+	var report unloadJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("unload --json output is not JSON: %v; output %q", err, stdout.String())
+	}
+	if report.Session != sessionID {
+		t.Fatalf("session = %q, want %q", report.Session, sessionID)
+	}
+	if report.SessionState != "unloaded" {
+		t.Fatalf("sessionState = %q, want unloaded", report.SessionState)
 	}
 }
 
@@ -500,6 +838,117 @@ func TestStopRejectsTooManyArgs(t *testing.T) {
 	}
 }
 
+type stubBackend struct {
+	responses []string
+	prompts   []string
+}
+
+func (backend *stubBackend) Prompt(message string) (string, error) {
+	backend.prompts = append(backend.prompts, message)
+	if len(backend.responses) == 0 {
+		return "", nil
+	}
+	response := backend.responses[0]
+	backend.responses = backend.responses[1:]
+	return response, nil
+}
+
+func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+	guidance, err := cmd.loadGuidance("tdd-flow", "Add load --json")
+	if err != nil {
+		t.Fatalf("load guidance: %v", err)
+	}
+	if guidance.Goal != "Add load --json" {
+		t.Fatalf("goal = %q, want task", guidance.Goal)
+	}
+	for state, want := range map[string]string{
+		"spec":          "Write the failing test",
+		"red":           "Implement the smallest code",
+		"green":         "code quality",
+		"qualityReview": "If the quality gate fails",
+		"refactoring":   "Refactor only to satisfy",
+	} {
+		prompt := guidance.States[state].Prompt
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("%s prompt = %q, want %q", state, prompt, want)
+		}
+	}
+	if guidance.States["spec"].Event != "writeTest" {
+		t.Fatalf("spec event = %q, want writeTest", guidance.States["spec"].Event)
+	}
+}
+
+func TestDriveCommandWritesTrace(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	cmd.backend = &stubBackend{responses: []string{"start", "finish"}}
+
+	if err := cmd.run([]string{"drive", "build-job", "--task", "Trace drive run."}); err != nil {
+		t.Fatalf("drive returned error: %v", err)
+	}
+	sessionID := extractSessionID(t, stdout.String())
+	tracePath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "drive.jsonl")
+	content, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	trace := string(content)
+	for _, want := range []string{
+		`"type":"prompt"`,
+		`"type":"response"`,
+		`"type":"advance"`,
+		`"type":"workspace"`,
+		`"state":"idle"`,
+		`"event":"start"`,
+	} {
+		if !strings.Contains(trace, want) {
+			t.Fatalf("trace missing %s:\n%s", want, trace)
+		}
+	}
+}
+
+func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	backend := &stubBackend{responses: []string{"start", "finish"}}
+	cmd.backend = backend
+
+	if err := cmd.run([]string{"drive", "build-job", "--task", "Drive build-job to done."}); err != nil {
+		t.Fatalf("drive returned error: %v", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"started: build-job",
+		"advanced: idle -> running",
+		"advanced: running -> done",
+		"terminal: done",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("drive output missing %q:\n%s", want, output)
+		}
+	}
+	if len(backend.prompts) != 2 {
+		t.Fatalf("backend prompts = %d, want 2", len(backend.prompts))
+	}
+	for _, want := range []string{"Drive build-job to done.", "Current state: idle"} {
+		if !strings.Contains(backend.prompts[0], want) {
+			t.Fatalf("prompt 0 missing %q:\n%s", want, backend.prompts[0])
+		}
+	}
+}
+
+func TestSmokeDriveScriptExists(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join("..", "..", "tests", "smoke", "circuit_drive_smoke.py")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected smoke script %s: %v", path, err)
+	}
+}
+
 func TestUnknownCommandFails(t *testing.T) {
 	t.Parallel()
 	stderr := &bytes.Buffer{}
@@ -522,10 +971,73 @@ func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch", "pr-watch.mch", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "check-registry.yaml", "alternating-check.sh"} {
+	for _, name := range []string{"build-job.mch", "build-job.prompts.yaml", "pr-watch.mch", "pr-watch.checks.yaml", "pr-watch.prompts.yaml", "review-flow.mch", "review-flow.checks.yaml", "retry-flow.mch", "retry-flow.checks.yaml", "tdd-flow.mch", "tdd-flow.checks.yaml", "tdd-flow.prompts.yaml", "check-registry.yaml", "alternating-check.sh"} {
 		copyTestFile(t, filepath.Join("..", "..", "machines", name), filepath.Join(machines, name))
 	}
 	return command{stdout: stdout, stderr: &bytes.Buffer{}, cwd: root}
+}
+
+type advanceJSONTest struct {
+	Allowed bool     `json:"allowed"`
+	Event   string   `json:"event"`
+	From    string   `json:"from"`
+	To      string   `json:"to"`
+	Failed  []string `json:"failed"`
+}
+
+type loadJSONTest struct {
+	Machine string                 `json:"machine"`
+	Checks  []checkBindingJSONTest `json:"checks"`
+}
+
+type scaffoldJSONTest struct {
+	Machine              string   `json:"machine"`
+	GeneratedBindings    []string `json:"generatedBindings"`
+	GeneratedRegistryIDs []string `json:"generatedRegistryIDs"`
+}
+
+type checkBindingJSONTest struct {
+	Variable string `json:"variable"`
+	Use      string `json:"use"`
+	Returns  string `json:"returns"`
+}
+
+type unloadJSONTest struct {
+	Session      string `json:"session"`
+	SessionState string `json:"sessionState"`
+}
+
+type statusJSONTest struct {
+	Session      string               `json:"session"`
+	SessionState string               `json:"sessionState"`
+	Machine      string               `json:"machine"`
+	Current      string               `json:"current"`
+	Enabled      []callStatusJSONTest `json:"enabled"`
+	Blocked      []callStatusJSONTest `json:"blocked"`
+}
+
+type callStatusJSONTest struct {
+	Call   string   `json:"call"`
+	Failed []string `json:"failed"`
+}
+
+func assertStatusJSON(t *testing.T, reports []statusJSONTest, session string, state string, current string) {
+	t.Helper()
+	for _, report := range reports {
+		if report.Session == session {
+			if report.SessionState != state || report.Current != current {
+				t.Fatalf("status for %s = %s/%s, want %s/%s", session, report.SessionState, report.Current, state, current)
+			}
+			if report.Machine != "build-job" {
+				t.Fatalf("machine for %s = %s, want build-job", session, report.Machine)
+			}
+			if len(report.Enabled) == 0 && len(report.Blocked) == 0 {
+				t.Fatalf("status for %s missing operations: %#v", session, report)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing status for session %s in %#v", session, reports)
 }
 
 func extractSessionID(t *testing.T, output string) string {
@@ -556,6 +1068,24 @@ func writeRegistry(t *testing.T, root string, command string) {
 	path := filepath.Join(root, "machines", "check-registry.yaml")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func writePRWatchRegistry(t *testing.T, root string, checksGreenCommand string, reviewCleanCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  prChecksGreen:\n    kind: command\n    command: " + checksGreenCommand + "\n    returns: BOOL\n  prReviewClean:\n    kind: command\n    command: " + reviewCleanCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write pr-watch registry: %v", err)
+	}
+}
+
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
 	}
 }
 

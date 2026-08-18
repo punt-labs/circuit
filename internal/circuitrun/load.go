@@ -8,7 +8,7 @@ import (
 func (runtime *Runtime) Load(machineName string) (LoadReport, error) {
 	machine, err := circuitb.LoadFile(runtime.resolveMachineFile(machineName))
 	if err != nil {
-		return LoadReport{}, err
+		return LoadReport{}, fmt.Errorf("load machine %s: %w", machineName, err)
 	}
 	bindings, registry, err := runtime.loadCheckConfiguration(machineName)
 	if err != nil {
@@ -24,7 +24,7 @@ func (runtime *Runtime) Load(machineName string) (LoadReport, error) {
 		if !ok {
 			return LoadReport{}, fmt.Errorf("check %s references unknown registry entry %s", variable, binding.Use)
 		}
-		if registered.Kind != "command" || registered.Returns != "BOOL" {
+		if registered.Kind != checkKindCommand || registered.Returns != checkReturnBool {
 			return LoadReport{}, fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
 		report.Checks = append(report.Checks, CheckBindingReport{Variable: variable, Use: binding.Use, Returns: registered.Returns})

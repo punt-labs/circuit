@@ -1,0 +1,29 @@
+states:
+  spec:
+    prompt: >
+      Write the failing test for the task. Do not implement production code.
+      When the targeted test is failing, request the transition event.
+    event: writeTest
+  red:
+    prompt: >
+      Implement the smallest code change that makes the failing test pass. Do
+      not refactor or broaden scope. When the full check passes, request the
+      transition event.
+    event: implement
+  green:
+    prompt: >
+      The slice is green. Request the transition event to run code quality
+      review before deciding finish or refactor.
+    event: reviewQuality
+  qualityReview:
+    prompt: >
+      Circuit has checked code quality. If the quality gate passes, request
+      finish. If the quality gate fails, request refactor.
+  refactoring:
+    prompt: >
+      Refactor only to satisfy the code quality gate while preserving behavior.
+      Use standard refactorings when they apply: Extract Function, Extract Type,
+      Extract Helper, Rename for clarity, consolidate duplicate conditionals,
+      and move repeated mapping logic into one place. When tests pass again,
+      request the transition event.
+    event: keepGreen

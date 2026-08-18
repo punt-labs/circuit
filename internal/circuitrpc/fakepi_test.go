@@ -10,8 +10,34 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrun"
 )
+
+func TestPiRPCBackendPromptRoundtripsThroughFakeProcess(t *testing.T) {
+	t.Parallel()
+	piIn, backendOut := io.Pipe()
+	backendIn, piOut := io.Pipe()
+	defer piIn.Close()
+	defer piOut.Close()
+
+	go fakePi(t, bufio.NewReader(piIn), piOut, map[string]string{"idle": "start"})
+
+	status := circuitrun.StatusReport{
+		MachineName: "build-job",
+		Current:     "idle",
+		Enabled:     []circuitb.CallStatus{{Call: "Advance(start)"}},
+	}
+	backend := NewPiRPCBackend(backendOut, bufio.NewReader(backendIn))
+
+	response, err := backend.Prompt(FormatPrompt(status))
+	if err != nil {
+		t.Fatalf("backend prompt: %v", err)
+	}
+	if strings.TrimSpace(response) != "start" {
+		t.Fatalf("response = %q, want start", response)
+	}
+}
 
 func TestRunnerLoopRejectsInvalidFakePiResponse(t *testing.T) {
 	t.Parallel()
@@ -76,6 +102,132 @@ func TestRunnerSingleSessionOnly(t *testing.T) {
 	_, err = runtime.Advance("start")
 	if err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
 		t.Fatalf("implicit advance with two sessions error = %v, want multiple active sessions", err)
+	}
+}
+
+func TestRunnerPromptIncludesGoalAndCurrentStateGuidance(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"start"}}
+	guidance := DriverGuidance{
+		Goal: "Prove goal and state guidance reach the agent.",
+		States: map[string]StateGuidance{
+			"idle": {Prompt: "Do the idle-state work before advancing.", Event: "start"},
+		},
+	}
+
+	_, err = RunUntilAcceptedWithGuidance(runtime, backend, guidance)
+	if err != nil {
+		t.Fatalf("run until accepted: %v", err)
+	}
+	if len(backend.prompts) != 1 {
+		t.Fatalf("prompts = %d, want 1", len(backend.prompts))
+	}
+	prompt := backend.prompts[0]
+	for _, want := range []string{
+		"Goal: Prove goal and state guidance reach the agent.",
+		"Current state: idle",
+		"Do the idle-state work before advancing.",
+		"When ready, request transition event: start",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+func TestRunnerRepromptsAfterBlockedOperation(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("build-job"); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"finish", "start"}}
+
+	result, err := RunUntilAccepted(runtime, backend)
+	if err != nil {
+		t.Fatalf("run until accepted: %v", err)
+	}
+	if result.Prompts != 2 {
+		t.Fatalf("prompts = %d, want 2", result.Prompts)
+	}
+	if !result.Transition.Allowed || result.Transition.From != "idle" || result.Transition.To != "running" {
+		t.Fatalf("transition = %#v, want idle -> running", result.Transition)
+	}
+	status, err := runtime.Status()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.Current != "running" {
+		t.Fatalf("current = %s, want running", status.Current)
+	}
+}
+
+func TestGuidedDriverRunsTDDSessionToTerminal(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	stateDir := filepath.Join(root, ".tmp")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("create state dir: %v", err)
+	}
+	statePath := filepath.Join(stateDir, "tdd-suite.state")
+	script := "if [ -f " + statePath + " ]; then exit 0; else touch " + statePath + "; exit 1; fi"
+	writeTDDRegistry(t, root, script, "true")
+	runtime, err := circuitrun.Resume(root)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if _, _, err := runtime.Start("tdd-flow"); err != nil {
+		t.Fatalf("start tdd-flow: %v", err)
+	}
+	backend := &scriptedBackend{responses: []string{"writeTest", "implement", "reviewQuality", "finish"}}
+	guidance := DriverGuidance{
+		Goal: "Deliver one guided TDD slice.",
+		States: map[string]StateGuidance{
+			"spec":          {Prompt: "Write the failing test.", Event: "writeTest"},
+			"red":           {Prompt: "Make the failing test pass.", Event: "implement"},
+			"green":         {Prompt: "Review code quality.", Event: "reviewQuality"},
+			"qualityReview": {Prompt: "Finish after quality review.", Event: "finish"},
+		},
+	}
+
+	result, err := RunGuidedSession(runtime, backend, guidance)
+	if err != nil {
+		t.Fatalf("run guided session: %v", err)
+	}
+	if result.Prompts != 4 {
+		t.Fatalf("prompts = %d, want 4", result.Prompts)
+	}
+	if len(result.Transitions) != 4 {
+		t.Fatalf("transitions = %d, want 4", len(result.Transitions))
+	}
+	for index, want := range []string{
+		"Write the failing test.",
+		"Make the failing test pass.",
+		"Review code quality.",
+		"Finish after quality review.",
+	} {
+		if !strings.Contains(backend.prompts[index], want) {
+			t.Fatalf("prompt %d missing %q:\n%s", index, want, backend.prompts[index])
+		}
+	}
+	status, err := runtime.Status()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.Current != "done" || status.SessionState != circuitrun.SessionStopped {
+		t.Fatalf("final status = %s/%s, want done/stopped", status.Current, status.SessionState)
 	}
 }
 
@@ -217,6 +369,30 @@ func runFakePiStep(t *testing.T, status circuitrun.StatusReport, responses map[s
 	return operation, nil
 }
 
+type scriptedBackend struct {
+	responses []string
+	prompts   []string
+}
+
+func (backend *scriptedBackend) Prompt(message string) (string, error) {
+	backend.prompts = append(backend.prompts, message)
+	if len(backend.responses) == 0 {
+		return "", fmt.Errorf("no scripted response for prompt %d", len(backend.prompts))
+	}
+	response := backend.responses[0]
+	backend.responses = backend.responses[1:]
+	return response, nil
+}
+
+func writeTDDRegistry(t *testing.T, root string, testSuiteCommand string, codeQualityCommand string) {
+	t.Helper()
+	content := []byte("checks:\n  codeQualityPassed:\n    kind: command\n    command: " + codeQualityCommand + "\n    returns: BOOL\n  testSuitePassed:\n    kind: command\n    command: " + testSuiteCommand + "\n    returns: BOOL\n")
+	path := filepath.Join(root, "machines", "check-registry.yaml")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write tdd registry: %v", err)
+	}
+}
+
 func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[string]string) {
 	t.Helper()
 	for {
@@ -263,7 +439,7 @@ func testRoot(t *testing.T) string {
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)
 	}
-	for _, name := range []string{"build-job.mch"} {
+	for _, name := range []string{"build-job.mch", "tdd-flow.mch", "tdd-flow.checks.yaml", "check-registry.yaml"} {
 		content, err := os.ReadFile(filepath.Join("..", "..", "machines", name))
 		if err != nil {
 			t.Fatalf("read fixture %s: %v", name, err)

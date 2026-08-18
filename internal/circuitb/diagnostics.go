@@ -1,5 +1,7 @@
 package circuitb
 
+import "strings"
+
 import "fmt"
 
 type Span struct {
@@ -36,11 +38,12 @@ func (diagnostics Diagnostics) Error() string {
 	if len(diagnostics) == 0 {
 		return ""
 	}
-	message := diagnostics[0].Error()
+	var message strings.Builder
+	message.WriteString(diagnostics[0].Error())
 	for _, diagnostic := range diagnostics[1:] {
-		message += "\n" + diagnostic.Error()
+		message.WriteString("\n" + diagnostic.Error())
 	}
-	return message
+	return message.String()
 }
 
 func (diagnostics Diagnostics) Err() error {

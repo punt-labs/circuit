@@ -105,10 +105,10 @@ func (resolver *resolver) resolveValue(variable variable, raw rawExpression) val
 		return value{kind: valueNat, nat: expression.Value}
 	case rawIdentifierExpression:
 		if variable.kind == valueBool {
-			if expression.Name != "TRUE" && expression.Name != "FALSE" {
+			if expression.Name != booleanLiteralTrue && expression.Name != booleanLiteralFalse {
 				resolver.diagnostics = append(resolver.diagnostics, Diagnostic{Span: raw.expressionSpan(), Message: fmt.Sprintf("invalid BOOL literal %s; expected TRUE or FALSE", expression.Name)})
 			}
-			return value{kind: valueBool, bool: expression.Name == "TRUE"}
+			return value{kind: valueBool, bool: expression.Name == booleanLiteralTrue}
 		}
 		return value{kind: valueEnum, enum: expression.Name}
 	}
@@ -117,7 +117,7 @@ func (resolver *resolver) resolveValue(variable variable, raw rawExpression) val
 }
 
 func (resolver *resolver) resolveOperations() []operation {
-	operations := []operation{}
+	operations := make([]operation, 0, len(resolver.raw.Operations))
 	for _, rawOperation := range resolver.raw.Operations {
 		operation := operation{Name: rawOperation.Name, Span: rawOperation.Span}
 		for _, parameter := range rawOperation.Parameters {
@@ -140,6 +140,8 @@ func (resolver *resolver) resolvePredicate(raw rawPredicate) predicate {
 		return comparisonPredicate{operator: predicate.Operator, left: resolver.resolveExpression(predicate.Left), right: resolver.resolveExpression(predicate.Right)}
 	case rawMembershipPredicate:
 		return membershipPredicate{element: resolver.resolveExpression(predicate.Element), set: resolver.resolveSetExpression(predicate.Set)}
+	case rawNotPredicate:
+		return notPredicate{inner: resolver.resolvePredicate(predicate.Inner)}
 	}
 	resolver.diagnostics = append(resolver.diagnostics, Diagnostic{Span: raw.predicateSpan(), Message: "unsupported predicate"})
 	return comparisonPredicate{operator: "=", left: numberExpression{}, right: numberExpression{}}

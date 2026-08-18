@@ -1,5 +1,7 @@
 package circuitb
 
+import "maps"
+
 import "fmt"
 
 func (machine Machine) State(facts map[string]value) (StateReport, error) {
@@ -73,12 +75,8 @@ func (machine Machine) valuesWithBooleans(booleans map[string]bool) map[string]v
 
 func (machine Machine) valuesWithFacts(facts map[string]value) map[string]value {
 	values := map[string]value{}
-	for key, item := range machine.initial {
-		values[key] = item
-	}
-	for key, item := range facts {
-		values[key] = item
-	}
+	maps.Copy(values, machine.initial)
+	maps.Copy(values, facts)
 	return values
 }
 
@@ -94,7 +92,12 @@ func (predicate binaryPredicate) explain(values map[string]value, bindings map[s
 		return nil
 	}
 	if predicate.operator == "or" {
-		return []string{"no disjunct satisfied"}
+		left := predicate.left.explain(values, bindings)
+		right := predicate.right.explain(values, bindings)
+		if len(left) <= len(right) {
+			return left
+		}
+		return right
 	}
 	failed := predicate.left.explain(values, bindings)
 	failed = append(failed, predicate.right.explain(values, bindings)...)
@@ -147,6 +150,31 @@ func (predicate membershipPredicate) explainText(_ map[string]value, _ map[strin
 	return predicate.element.format() + " : " + predicate.set.format()
 }
 
+func (predicate notPredicate) evaluate(values map[string]value, bindings map[string]value) bool {
+	return !predicate.inner.evaluate(values, bindings)
+}
+
+func (predicate notPredicate) explain(values map[string]value, bindings map[string]value) []string {
+	if predicate.evaluate(values, bindings) {
+		return nil
+	}
+	return []string{"not(" + describePredicate(predicate.inner) + ")"}
+}
+
+func describePredicate(predicate predicate) string {
+	switch inner := predicate.(type) {
+	case comparisonPredicate:
+		return inner.left.format() + " " + inner.operator + " " + inner.right.format()
+	case membershipPredicate:
+		return inner.element.format() + " : " + inner.set.format()
+	case notPredicate:
+		return "not(" + describePredicate(inner.inner) + ")"
+	case binaryPredicate:
+		return describePredicate(inner.left) + " " + inner.operator + " " + describePredicate(inner.right)
+	}
+	return "predicate"
+}
+
 func (expression identifierExpression) evaluate(values map[string]value, bindings map[string]value) value {
 	if item, ok := bindings[expression.name]; ok {
 		return item
@@ -154,10 +182,10 @@ func (expression identifierExpression) evaluate(values map[string]value, binding
 	if item, ok := values[expression.name]; ok {
 		return item
 	}
-	if expression.name == "TRUE" {
+	if expression.name == booleanLiteralTrue {
 		return value{kind: valueBool, bool: true}
 	}
-	if expression.name == "FALSE" {
+	if expression.name == booleanLiteralFalse {
 		return value{kind: valueBool, bool: false}
 	}
 	return value{kind: valueEnum, enum: expression.name}
@@ -213,9 +241,7 @@ func (substitution parallelAssignment) apply(values map[string]value, bindings m
 	for _, item := range substitution.assignments {
 		updates[item.name] = item.value.evaluate(values, bindings)
 	}
-	for key, item := range updates {
-		next[key] = item
-	}
+	maps.Copy(next, updates)
 	return next
 }
 
@@ -233,8 +259,6 @@ func (substitution ifSubstitution) apply(values map[string]value, bindings map[s
 
 func cloneValues(values map[string]value) map[string]value {
 	clone := map[string]value{}
-	for key, item := range values {
-		clone[key] = item
-	}
+	maps.Copy(clone, values)
 	return clone
 }

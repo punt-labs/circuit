@@ -1,7 +1,14 @@
 # golangci-lint config for circuit.
 #
-# Matches the ethos convention: golangci-lint v2 with a conservative linter
-# set. Only linters the tree passes clean today are enabled.
+# Two tiers of linting:
+#
+#   make check          runs the default linters (always-on gate)
+#   make check-go-quality  runs the structural quality linters (codeQualityPassed gate)
+#
+# Default linters (govet, staticcheck, unused, gofmt) must pass on every commit.
+# Quality linters are calibrated to produce an actionable failure set and are
+# tightened incrementally via the tdd-flow quality-ratchet pattern.
+
 version: "2"
 
 linters:
@@ -10,7 +17,12 @@ linters:
     - govet
     - staticcheck
     - unused
+    - ineffassign
+
   settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
     staticcheck:
       checks:
         - all
@@ -21,6 +33,61 @@ linters:
         - -ST1021
         - -ST1022
         - -QF*
+
+    # --- quality gate settings (used by make check-go-quality) ---
+
+    dupl:
+      threshold: 50
+
+    funlen:
+      lines: 70
+      statements: 40
+
+    gocognit:
+      min-complexity: 20
+
+    cyclop:
+      max-complexity: 15
+
+    maintidx:
+      under: 25
+
+    nestif:
+      min-complexity: 6
+
+    nakedret:
+      max-func-lines: 0
+
+    misspell:
+      locale: US
+
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+    godot:
+      scope: declarations
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+  exclusions:
+    paths:
+      - \.tmp/
+    rules:
+      # fmt.Fprintf/Fprintln/Printf return values are intentionally ignored in
+      # the CLI output layer. The writer is either os.Stdout or a test buffer;
+      # errors there are not actionable in a CLI binary.
+      - path: 'cmd/circuit/main\.go'
+        linters:
+          - errcheck
+          - wrapcheck
+        text: 'fmt\.F'
+      # CLI adapter layer does not need to wrap errors from library packages.
+      - path: 'cmd/'
+        linters:
+          - wrapcheck
 
 formatters:
   enable:

@@ -59,6 +59,15 @@ func (predicate rawComparisonPredicate) predicateSpan() Span {
 	return predicate.Span
 }
 
+type rawNotPredicate struct {
+	Inner rawPredicate
+	Span  Span
+}
+
+func (predicate rawNotPredicate) predicateSpan() Span {
+	return predicate.Span
+}
+
 type rawMembershipPredicate struct {
 	Element rawExpression
 	Set     rawSetExpression

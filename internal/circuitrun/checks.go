@@ -41,10 +41,10 @@ func (runtime *Runtime) runChecks(run *Run) error {
 		if !ok {
 			return fmt.Errorf("check %s references unknown registry entry %s", variable, binding.Use)
 		}
-		if registered.Kind != "command" || registered.Returns != "BOOL" {
+		if registered.Kind != checkKindCommand || registered.Returns != checkReturnBool {
 			return fmt.Errorf("check %s must reference a command returning BOOL", variable)
 		}
-		passed := runtime.runBooleanCommand(registered.Command)
+		passed := runtime.runBooleanCommand(registered.Command, run)
 		run.Booleans[variable] = passed
 		check := run.Checks[variable]
 		check.Invocations++
@@ -54,9 +54,15 @@ func (runtime *Runtime) runChecks(run *Run) error {
 	return nil
 }
 
-func (runtime *Runtime) runBooleanCommand(command string) bool {
-	result := exec.Command("sh", "-c", command)
+func (runtime *Runtime) runBooleanCommand(command string, run *Run) bool {
+	result := exec.Command("sh", "-c", command) //nolint:gosec // G204: command is from check registry controlled by the project owner
 	result.Dir = runtime.root
+	result.Env = append(os.Environ(),
+		"CIRCUIT_SESSION_ID="+run.SessionID,
+		"CIRCUIT_MACHINE_NAME="+run.MachineName,
+		"CIRCUIT_MACHINE_FILE="+run.MachineFile,
+		"CIRCUIT_CURRENT_STATE="+run.Current,
+	)
 	return result.Run() == nil
 }
 
@@ -82,32 +88,49 @@ func (runtime *Runtime) loadCheckBindings(machine string) (checkBindingsFile, er
 	return runtime.readCheckBindings(runtime.checkBindingsPath(machine))
 }
 
-func (runtime *Runtime) loadOptionalCheckBindings(machine string) (checkBindingsFile, error) {
-	bindings, err := runtime.readCheckBindings(runtime.checkBindingsPath(machine))
+func loadOptionalYAMLFile[T any](path, label string, empty T) (T, error) {
+	result, err := readYAMLFile[T](path, label)
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		return checkBindingsFile{Checks: map[string]checkBinding{}}, nil
+		return empty, nil
 	}
-	return bindings, err
+	return result, err
+}
+
+func (runtime *Runtime) loadOptionalCheckBindings(machine string) (checkBindingsFile, error) {
+	return loadOptionalYAMLFile(runtime.checkBindingsPath(machine), "check bindings",
+		checkBindingsFile{Checks: map[string]checkBinding{}})
+}
+
+func readYAMLFile[T any](path, label string) (T, error) {
+	var zero T
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a project-local file resolved by runtime
+	if err != nil {
+		return zero, fmt.Errorf("read %s %s: %w", label, path, err)
+	}
+	var result T
+	if err := yaml.Unmarshal(content, &result); err != nil {
+		return zero, fmt.Errorf("parse %s %s: %w", label, path, err)
+	}
+	return result, nil
+}
+
+func writeYAMLFile(path, label string, value any) error {
+	content, err := yaml.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshal %s: %w", label, err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil { //nolint:gosec // G306: 0o600 is intentionally restrictive
+		return fmt.Errorf("write %s %s: %w", label, path, err)
+	}
+	return nil
 }
 
 func (runtime *Runtime) readCheckBindings(path string) (checkBindingsFile, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return checkBindingsFile{}, err
-	}
-	var bindings checkBindingsFile
-	if err := yaml.Unmarshal(content, &bindings); err != nil {
-		return checkBindingsFile{}, err
-	}
-	return bindings, nil
+	return readYAMLFile[checkBindingsFile](path, "check bindings")
 }
 
 func (runtime *Runtime) writeCheckBindings(machine string, bindings checkBindingsFile) error {
-	content, err := yaml.Marshal(bindings)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(runtime.checkBindingsPath(machine), content, 0o600)
+	return writeYAMLFile(runtime.checkBindingsPath(machine), "check bindings", bindings)
 }
 
 func (runtime *Runtime) loadCheckRegistry(machine string) (checkRegistryFile, error) {
@@ -115,31 +138,16 @@ func (runtime *Runtime) loadCheckRegistry(machine string) (checkRegistryFile, er
 }
 
 func (runtime *Runtime) loadOptionalCheckRegistry(machine string) (checkRegistryFile, error) {
-	registry, err := runtime.readCheckRegistry(runtime.checkRegistryPath(machine))
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		return checkRegistryFile{Checks: map[string]registeredCheck{}}, nil
-	}
-	return registry, err
+	return loadOptionalYAMLFile(runtime.checkRegistryPath(machine), "check registry",
+		checkRegistryFile{Checks: map[string]registeredCheck{}})
 }
 
 func (runtime *Runtime) readCheckRegistry(path string) (checkRegistryFile, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return checkRegistryFile{}, err
-	}
-	var registry checkRegistryFile
-	if err := yaml.Unmarshal(content, &registry); err != nil {
-		return checkRegistryFile{}, err
-	}
-	return registry, nil
+	return readYAMLFile[checkRegistryFile](path, "check registry")
 }
 
 func (runtime *Runtime) writeCheckRegistry(machine string, registry checkRegistryFile) error {
-	content, err := yaml.Marshal(registry)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(runtime.checkRegistryPath(machine), content, 0o600)
+	return writeYAMLFile(runtime.checkRegistryPath(machine), "check registry", registry)
 }
 
 func (runtime *Runtime) checkBindingsPath(machine string) string {

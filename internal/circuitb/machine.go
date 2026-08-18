@@ -1,11 +1,14 @@
 package circuitb
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 func LoadFile(path string) (Machine, error) {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is caller-supplied machine file; callers are CLI or tests
 	if err != nil {
-		return Machine{}, err
+		return Machine{}, fmt.Errorf("read machine file %s: %w", path, err)
 	}
 	tokens, err := lex(path, string(content))
 	if err != nil {
