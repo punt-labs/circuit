@@ -25,27 +25,32 @@ repo=$(read_config_key REPO)
 [ -n "$pr" ] || fail "PR_NUMBER is required in $config"
 [ -n "$repo" ] || fail "REPO is required in $config"
 
-# Use only the most recent review per user. A later APPROVED review from
-# the same user supersedes an earlier CHANGES_REQUESTED.
+# Review is clean only when there are no unresolved conversation threads.
+# Branch protection enforces this same rule before merge.
 set +e
-open_count=$(gh api "repos/$repo/pulls/$pr/reviews" --jq '
-  group_by(.user.login)
-  | map(sort_by(.submitted_at) | last)
-  | map(select(.state == "CHANGES_REQUESTED"))
-  | length
-' 2>&1)
+open_count=$(gh api graphql -f query="
+  query {
+    repository(owner: \"${repo%%/*}\", name: \"${repo##*/}\") {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100) {
+          nodes { isResolved }
+        }
+      }
+    }
+  }
+" --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' 2>&1)
 exit_code=$?
 set -e
 
 [ "$exit_code" -eq 0 ] || {
 	printf '%s\n' "$open_count" >&2
-	fail "gh api reviews failed"
+	fail "gh api review threads failed"
 }
 
 if [ "$open_count" = "0" ]; then
-	printf 'review clean: no outstanding change requests\n'
+	printf 'review clean: no unresolved threads\n'
 	exit 0
 fi
 
-printf 'review has %s outstanding change request(s)\n' "$open_count" >&2
+printf 'review has %s unresolved thread(s)\n' "$open_count" >&2
 exit 1
