@@ -775,11 +775,11 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  list                        list available B machines")
 	fmt.Fprintln(cmd.stderr, "  load [--json] <machine>     validate machine and check bindings")
 	fmt.Fprintln(cmd.stderr, "  scaffold [--json] <machine> generate missing check bindings and false stubs")
-	fmt.Fprintln(cmd.stderr, "  start <machine>             start a circuit session")
+	fmt.Fprintln(cmd.stderr, "  start [--json] <machine>    start a circuit session")
 	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")
 	fmt.Fprintln(cmd.stderr, "  advance [--json] <event> [session]")
 	fmt.Fprintln(cmd.stderr, "                              apply Advance(event) to a circuit session")
-	fmt.Fprintln(cmd.stderr, "  stop [session]              stop a circuit session")
+	fmt.Fprintln(cmd.stderr, "  stop [--json] [session]     stop a circuit session")
 	fmt.Fprintln(cmd.stderr, "  unload [--json] <session>   remove a stopped circuit session")
 	fmt.Fprintln(cmd.stderr, "  drive <machine> [--task s]  run a machine end-to-end against an agent backend")
 }

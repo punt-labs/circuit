@@ -25,19 +25,24 @@ repo=$(read_config_key REPO)
 [ -n "$pr" ] || fail "PR_NUMBER is required in $config"
 [ -n "$repo" ] || fail "REPO is required in $config"
 
+# Use structured JSON output to avoid brittle text parsing.
+# Counts checks that are not in a passing or skipped state.
 set +e
-result=$(gh pr checks "$pr" -R "$repo" 2>&1)
-status=$?
+failing=$(gh pr checks "$pr" -R "$repo" --json state,name --jq '
+  [.[] | select(.state | ascii_downcase | test("^(pass|success|skip|neutral|completed)$") | not)] | length
+' 2>&1)
+exit_code=$?
 set -e
 
-if [ "$status" -ne 0 ]; then
-	printf '%s\n' "$result" >&2
+if [ "$exit_code" -ne 0 ]; then
+	printf '%s\n' "$failing" >&2
 	fail "gh pr checks failed"
 fi
 
-printf '%s\n' "$result" | grep -qvE '^(pass|success|skip)' && {
-	printf '%s\n' "$result" >&2
-	exit 1
-}
+if [ "$failing" = "0" ]; then
+	printf 'all PR checks green\n'
+	exit 0
+fi
 
-printf 'all PR checks green\n'
+printf '%s check(s) not yet passing\n' "$failing" >&2
+exit 1

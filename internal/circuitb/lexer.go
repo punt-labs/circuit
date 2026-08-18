@@ -83,8 +83,23 @@ func (lexer *lexer) operator() (token, error) {
 	return token{}, Diagnostic{Span: start, Message: fmt.Sprintf("unexpected character %q", current)}
 }
 
+func (lexer *lexer) tryReturn() bool {
+	r0, ok0 := lexer.peekAt(0)
+	if !ok0 || r0 != '-' {
+		return false
+	}
+	r1, ok1 := lexer.peekAt(1)
+	if !ok1 || r1 != '-' {
+		return false
+	}
+	lexer.advance()
+	lexer.advance()
+	return true
+}
+
 func (lexer *lexer) compoundOperator(current rune) (tokenType, string, bool) {
-	if current == '<' && lexer.match('-') && lexer.match('-') {
+	// "<--" uses safe two-character lookahead before consuming.
+	if current == '<' && lexer.tryReturn() {
 		return tokenReturn, "<--", true
 	}
 	if current == ':' && lexer.match('=') {
@@ -165,6 +180,14 @@ func (lexer *lexer) advance() rune {
 
 func (lexer *lexer) peek() rune {
 	return lexer.input[lexer.index]
+}
+
+func (lexer *lexer) peekAt(offset int) (rune, bool) {
+	index := lexer.index + offset
+	if index >= len(lexer.input) {
+		return 0, false
+	}
+	return lexer.input[index], true
 }
 
 func (lexer *lexer) done() bool {

@@ -341,7 +341,12 @@ func (runtime *Runtime) isTerminal(run *Run) bool {
 	return true
 }
 
+const maxBooleanValuationVariables = 16
+
 func booleanValuations(variables []string, base map[string]bool) []map[string]bool {
+	if len(variables) > maxBooleanValuationVariables {
+		variables = variables[:maxBooleanValuationVariables]
+	}
 	count := 1 << len(variables)
 	valuations := make([]map[string]bool, 0, count)
 	for bits := range count {

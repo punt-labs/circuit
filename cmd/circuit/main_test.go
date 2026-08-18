@@ -9,6 +9,33 @@ import (
 	"testing"
 )
 
+func TestUsageDocumentsJSONFlagForAllCommands(t *testing.T) {
+	t.Parallel()
+	stderr := &bytes.Buffer{}
+	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr, cwd: t.TempDir()}
+	_ = cmd.run([]string{"--help"})
+	usage := stderr.String()
+	for _, want := range []string{
+		"start",
+		"stop",
+		"status [--json]",
+		"advance [--json]",
+		"load [--json]",
+		"scaffold [--json]",
+		"unload [--json]",
+	} {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("usage missing %q:\n%s", want, usage)
+		}
+	}
+	if !strings.Contains(usage, "start [--json]") {
+		t.Fatalf("usage does not document --json for start:\n%s", usage)
+	}
+	if !strings.Contains(usage, "stop [--json]") {
+		t.Fatalf("usage does not document --json for stop:\n%s", usage)
+	}
+}
+
 func TestBMachineList(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
