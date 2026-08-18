@@ -12,7 +12,7 @@
 #
 # To update: change version and update both sha256 hashes using
 #   nix-prefetch-url --type sha256 <url>
-{ lib, stdenv, fetchurl, unzip, autoPatchelfHook, zlib, glibc, gcc-unwrapped, util-linux, gmp }:
+{ lib, stdenv, fetchurl, unzip, autoPatchelfHook, zlib, glibc, gcc-unwrapped, util-linux, gmp, jre_headless }:
 
 let
   version = "1.15.1";
@@ -44,7 +44,7 @@ stdenv.mkDerivation {
     unzip
   ];
 
-  buildInputs = lib.optionals stdenv.isLinux [
+  buildInputs = [ jre_headless ] ++ lib.optionals stdenv.isLinux [
     zlib
     glibc
     gcc-unwrapped.lib
@@ -69,6 +69,7 @@ stdenv.mkDerivation {
     # Wrapper so probcli resolves its lib relative to the installation.
     cat > $out/bin/probcli <<EOF
 #!${stdenv.shell}
+export PATH=${jre_headless}/bin:\$PATH
 exec $out/prob/probcli "\$@"
 EOF
     chmod +x $out/bin/probcli
