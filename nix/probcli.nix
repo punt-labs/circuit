@@ -11,7 +11,7 @@
 #
 # To update: change version and update both sha256 hashes using
 #   nix-prefetch-url --type sha256 <url>
-{ lib, stdenv, fetchurl, unzip, autoPatchelfHook, zlib, glibc }:
+{ lib, stdenv, fetchurl, unzip, autoPatchelfHook, zlib, glibc, gcc-unwrapped }:
 
 let
   version = "1.15.1";
@@ -44,6 +44,7 @@ stdenv.mkDerivation {
   buildInputs = lib.optionals stdenv.isLinux [
     zlib
     glibc
+    gcc-unwrapped.lib
   ];
 
   unpackPhase = if stdenv.isDarwin
