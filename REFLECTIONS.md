@@ -290,6 +290,87 @@ Without `npm install`, `make check` fails for setup reasons, which makes
 
 This three-step setup should become `.bin/prep-drive-worktree.sh`.
 
+## PR feedback cycle — what worked
+
+The combined `pr-watch` + `/every 3m` + `tdd-flow` loop for PR #2 worked.
+
+The cycle ran as designed:
+
+1. PR opened.
+2. `pr-watch-e132` started in `watch` state.
+3. `/every 3m` woke the agent, observed failing checks.
+4. `needsWork` advanced — machine entered `fixing`.
+5. Copilot had already reviewed (auto-triggered on push) and posted 5 findings.
+6. One `tdd-flow` slice addressed all 5 findings.
+7. Review threads resolved via GraphQL.
+8. Both check scripts confirmed clean.
+9. `fixed` advanced — machine reached `done`.
+10. PR merged.
+
+Key things that worked:
+
+- `pr-watch` gating `fixed` on both `checksGreen` and `reviewClean` meant
+  the machine would not allow merging until both were confirmed. That was
+  the right design.
+- The check scripts using `CIRCUIT_SESSION_ID` kept evidence session-scoped.
+  Multiple concurrent PRs could run independently.
+- The `tdd-flow` slice within the PR feedback loop was natural. Each round of
+  Copilot feedback is a small TDD slice: red (findings exist), green (findings
+  fixed).
+- `/every 3m` as observer and `pr-watch` as authority was the right separation.
+  The poll does not decide truth; Circuit does.
+
+## PR feedback cycle — what needs tuning
+
+### 1. Repos without GitHub Actions
+
+The `checksGreen` check calls `gh pr checks`. If no GitHub Actions are
+configured the command returns "no checks reported" and the check fails
+permanently. We added `SKIP_CI_CHECK=true` as a workaround in the evidence
+file. This is wrong — it couples a session-level override into the check
+script logic.
+
+Better: separate the check gate into `ciChecksGreen` and `reviewClean` and
+only require CI if the repo has workflows. Or make `checksGreen` configurable
+per evidence file with a `REQUIRE_CI=false` flag that is explicit and documented.
+
+### 2. pr-watch prompts need strengthening
+
+The current prompts are generic. They do not tell the agent where to look for
+findings or how to decide when review is clean. A driven pr-watch run would
+benefit from prompts specific to the kind of review feedback expected.
+
+### 3. First review timing
+
+Copilot auto-reviews on push so it already had 5 findings ready by the time
+the `/every 3m` fired. The machine entered `fixing` before we had a chance
+to read the findings carefully. The first `tdd-flow` slice addressed all 5 at
+once, which worked but was non-obvious.
+
+Better: the `watch -> needsWork` transition should probably include the list
+of review findings as context so the driven `tdd-flow` slice knows exactly
+what to fix.
+
+### 4. No `check-machines` in the pipeline
+
+The Copilot finding about `compoundOperator` was a real correctness bug.
+It was caught only by human/Copilot review. It should have been caught by a
+formally tested lexer invariant in `make check-machines`.
+
+### 5. Review thread resolution is manual GraphQL
+
+After fixing the findings we had to manually resolve review threads via
+GraphQL mutations before merge was allowed. This is mechanical work that
+Circuit could handle: if a thread is about a specific file/line and we pushed
+a fix commit, the thread could be auto-resolved after the fix is confirmed.
+
+### 6. pr-watch needs a checks override mechanism that is first-class
+
+Rather than `SKIP_CI_CHECK=true` in the evidence file, the pr-watch machine
+or its driver should accept a configuration for what constitutes "green" for
+this particular repository. The checks are project-local; the policy for what
+counts as passing should also be project-local and explicit.
+
 ## Current conclusion
 
 Circuit is useful when it is the middle authority, not merely context injected
