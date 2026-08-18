@@ -25,12 +25,6 @@ repo=$(read_config_key REPO)
 [ -n "$pr" ] || fail "PR_NUMBER is required in $config"
 [ -n "$repo" ] || fail "REPO is required in $config"
 
-skip_ci=$(read_config_key SKIP_CI_CHECK)
-if [ "$skip_ci" = "true" ]; then
-	printf 'CI check skipped (no GitHub Actions configured for this repo)\n'
-	exit 0
-fi
-
 # Use structured JSON output to avoid brittle text parsing.
 # Counts checks that are not in a passing or skipped state.
 set +e

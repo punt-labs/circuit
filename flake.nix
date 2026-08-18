@@ -19,10 +19,19 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
     in
     {
+      packages = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          probcli = pkgs.callPackage ./nix/probcli.nix {};
+        });
+
       devShells = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
           bd = beads.packages.${system}.default;
+          probcli = self.packages.${system}.probcli;
         in
         {
           default = pkgs.mkShell {
@@ -44,6 +53,7 @@
               jq
               markdownlint-cli2
               nodejs_24
+              probcli
               ripgrep
               shellcheck
             ];

@@ -1,0 +1,34 @@
+name: check
+
+on:
+  push:
+    branches: ["main", "feat/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v13
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v7
+
+      - name: install go tools
+        run: nix develop --command make tools
+
+      - name: install pi extension deps
+        run: nix develop --command npm --prefix .pi install --no-audit --no-fund
+
+      - name: check
+        run: nix develop --command make check
+
+      - name: check-go-quality
+        run: nix develop --command make check-go-quality
+
+      - name: check-machines
+        run: nix develop --command make check-machines
