@@ -245,6 +245,13 @@ make check
 Non-Nix development should remain possible for contributors who already have
 the required tools installed.
 
+## Continuous integration
+
+GitHub Actions runs `make check`, `make check-go-quality`, and
+`make check-machines` inside the Nix dev shell on every push and pull request.
+The project-local `nix/probcli.nix` derivation pins ProB 1.15.1 and its runtime
+requirements, including the Java parser.
+
 ## Make targets
 
 The root Makefile is organized around product surfaces, not implementation

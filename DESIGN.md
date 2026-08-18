@@ -429,3 +429,28 @@ category, and a real Circuit-driven refactor loop drove that set to zero.
 - It excludes tests for now to focus on production structure.
 - Future tools or stricter thresholds should be introduced through TDD
   slices and observed through `tdd-flow`.
+
+## ADR 19: CI runs the full formal and implementation gates through Nix
+
+**Decision:** GitHub Actions runs `make check`, `make check-go-quality`, and
+`make check-machines` inside the pinned Nix dev shell on every push and pull
+request. ProB 1.15.1 is packaged by a project-local Nix derivation and is a
+first-class CI dependency.
+
+**Evidence:** Before CI existed, `pr-watch` required a manual
+`SKIP_CI_CHECK=true` override and could not validate pull-request checks. The
+first CI rollout caught platform-specific ProB dependencies that passed on
+macOS but failed on clean Linux. Repeated CI cycles identified the full runtime
+set: libstdc++, libgcc, libuuid, GMP, and a JRE for the Java parser. Once these
+were included, the complete B-machine gate passed on GitHub Actions.
+
+**Constraints:**
+
+- ProB is a development/release dependency, never a circuit runtime dependency.
+- ProB is fetched only from the official HHU release host and pinned by version
+  and SHA-256.
+- Linux ProB is x86_64-only. The flake keeps an aarch64 Linux Go-only dev shell
+  but does not expose the ProB package there.
+- CI actions are pinned by commit SHA and use read-only repository permissions.
+- CI uses `npm ci`, not `npm install`, because `.pi/package-lock.json` is
+  committed.

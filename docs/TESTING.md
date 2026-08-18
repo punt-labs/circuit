@@ -144,11 +144,27 @@ packages are thin adapters over the core runtime.
 
 Run `make coverage` to see all tier summaries.
 
+## Continuous integration
+
+GitHub Actions runs the project through the Nix dev shell on every push and pull
+request:
+
+```text
+make check
+make check-go-quality
+make check-machines
+```
+
+The workflow uses the same pinned Go, Node, golangci-lint, and ProB toolchain as
+local Nix development. ProB 1.15.1 is packaged by `nix/probcli.nix`; CI runs on
+x86_64 Linux because upstream does not publish Linux aarch64 binaries.
+
 ## Required gates
 
 Before committing code changes:
 
 - `make check`
+- `make check-go-quality`
 
 Before changing formal design specs:
 
