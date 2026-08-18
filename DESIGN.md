@@ -433,9 +433,9 @@ category, and a real Circuit-driven refactor loop drove that set to zero.
 ## ADR 19: CI runs the full formal and implementation gates through Nix
 
 **Decision:** GitHub Actions runs `make check`, `make check-go-quality`, and
-`make check-machines` inside the pinned Nix dev shell on every push and pull
-request. ProB 1.15.1 is packaged by a project-local Nix derivation and is a
-first-class CI dependency.
+`make check-machines` inside the pinned Nix dev shell for pushes to `main` and
+`feat/**`, and for pull requests targeting `main`. ProB 1.15.1 is packaged by a
+project-local Nix derivation and is a first-class CI dependency.
 
 **Evidence:** Before CI existed, `pr-watch` required a manual
 `SKIP_CI_CHECK=true` override and could not validate pull-request checks. The

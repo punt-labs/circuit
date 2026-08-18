@@ -33,8 +33,9 @@ Run Beads from the Nix dev shell so the CLI comes from the repo toolchain.
 
 ## Continuous integration
 
-`.github/workflows/check.yml` runs every push and pull request through the Nix
-dev shell. CI executes `make check`, `make check-go-quality`, and
+`.github/workflows/check.yml` runs pushes to `main` and `feat/**`, plus pull
+requests targeting `main`, through the Nix dev shell. CI executes `make check`,
+`make check-go-quality`, and
 `make check-machines`. ProB is pinned to 1.15.1 and fetched from the official
 HHU release host. CI runs on x86_64 Linux because ProB does not publish a Linux
 aarch64 build.

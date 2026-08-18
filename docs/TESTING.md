@@ -146,8 +146,8 @@ Run `make coverage` to see all tier summaries.
 
 ## Continuous integration
 
-GitHub Actions runs the project through the Nix dev shell on every push and pull
-request:
+GitHub Actions runs the project through the Nix dev shell for pushes to `main`
+and `feat/**`, and for pull requests targeting `main`:
 
 ```text
 make check

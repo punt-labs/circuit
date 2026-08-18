@@ -248,7 +248,8 @@ the required tools installed.
 ## Continuous integration
 
 GitHub Actions runs `make check`, `make check-go-quality`, and
-`make check-machines` inside the Nix dev shell on every push and pull request.
+`make check-machines` inside the Nix dev shell for pushes to `main` and
+`feat/**`, and for pull requests targeting `main`.
 The project-local `nix/probcli.nix` derivation pins ProB 1.15.1 and its runtime
 requirements, including the Java parser.
 
