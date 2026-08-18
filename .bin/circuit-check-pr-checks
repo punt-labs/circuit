@@ -26,10 +26,10 @@ repo=$(read_config_key REPO)
 [ -n "$repo" ] || fail "REPO is required in $config"
 
 # Use structured JSON output to avoid brittle text parsing.
-# Counts checks that are not in a passing or skipped state.
+# bucket is the pass/fail/pending/skipping/cancel classification from gh.
 set +e
-failing=$(gh pr checks "$pr" -R "$repo" --json state,name --jq '
-  [.[] | select(.state | ascii_downcase | test("^(pass|success|skip|neutral|completed)$") | not)] | length
+failing=$(gh pr checks "$pr" -R "$repo" --json bucket,name --jq '
+  [.[] | select(.bucket | ascii_downcase | test("^(pass|skipping)$") | not)] | length
 ' 2>&1)
 exit_code=$?
 set -e

@@ -16,10 +16,18 @@
         "x86_64-linux"
       ];
 
+      probcliSystems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "x86_64-linux"
+      ];
+
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      forProbcliSystems = nixpkgs.lib.genAttrs probcliSystems;
+      probcliSupported = system: builtins.elem system probcliSystems;
     in
     {
-      packages = forAllSystems (system:
+      packages = forProbcliSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
         in
@@ -31,7 +39,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           bd = beads.packages.${system}.default;
-          probcli = self.packages.${system}.probcli;
+          probcli = if probcliSupported system then self.packages.${system}.probcli else null;
         in
         {
           default = pkgs.mkShell {
@@ -53,10 +61,9 @@
               jq
               markdownlint-cli2
               nodejs_24
-              probcli
               ripgrep
               shellcheck
-            ];
+            ] ++ pkgs.lib.optionals (probcliSupported system) [ probcli ];
 
             shellHook = ''
               export CIRCUIT_NIX_SHELL=1

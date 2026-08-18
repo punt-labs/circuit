@@ -1,7 +1,8 @@
 # probcli derivation for circuit's dev shell and CI.
 #
 # ProB is not in nixpkgs. This derivation fetches the official release
-# archives from https://prob.hhu.de and extracts the probcli binary.
+# archives from stups.hhu-hosting.de (linked from prob.hhu.de) and extracts the
+# probcli binary.
 #
 # Platforms:
 #   Linux x86_64:  ProB.linux64.tar.gz
@@ -27,6 +28,8 @@ let
     sha256 = "1hi4izsgz6n0z3g44708z7sgnjywn69pcwxiyhc7zv2nxs7ci1bf";
   };
 in
+
+assert stdenv.isDarwin || stdenv.hostPlatform.system == "x86_64-linux";
 
 stdenv.mkDerivation {
   pname = "probcli";
@@ -65,7 +68,7 @@ stdenv.mkDerivation {
     chmod +x $out/prob/probcli
     # Wrapper so probcli resolves its lib relative to the installation.
     cat > $out/bin/probcli <<EOF
-#!/usr/bin/env sh
+#!${stdenv.shell}
 exec $out/prob/probcli "\$@"
 EOF
     chmod +x $out/bin/probcli
