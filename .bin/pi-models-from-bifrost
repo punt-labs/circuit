@@ -12,7 +12,7 @@ Options:
                       (default: ~/.punt-labs/bifrost.env)
     --vk-entry PATH   optional pass entry containing the Bifrost virtual key
     --out PATH        output path (default: ~/.pi/agent/models.json)
-    --bifrost URL     Bifrost base (default: http://192.168.20.102:8080)
+    --bifrost URL     Bifrost base (default: http://okinos.user.home.lab:8080)
     --print           print to stdout instead of writing
     --curated LIST    comma-separated slug allowlist; default = built-in set
 """
@@ -302,8 +302,7 @@ def main() -> int:
     credentials.add_argument("--vk-file", default=None)
     credentials.add_argument("--vk-entry", default=None)
     p.add_argument("--out", default=os.path.expanduser("~/.pi/agent/models.json"))
-    p.add_argument("--bifrost", default="http://192.168.20.102:8080")
-    p.set_defaults(bifrost="http://okinos.user.home.lab:8080")
+    p.add_argument("--bifrost", default="http://okinos.user.home.lab:8080")
     p.add_argument("--print", action="store_true")
     p.add_argument("--curated", default=None)
     args = p.parse_args()
