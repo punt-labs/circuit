@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""Generate pi's ~/.pi/agent/models.json from Bifrost's /v1/models catalog.
+
+Maps Bifrost's advertised capabilities into pi's model schema, cross-referencing
+OpenRouter's mirror to fill gaps in Anthropic/OpenAI/Ollama direct entries.
+
+Usage:
+    pi-models-from-bifrost [--vk-file ~/.punt-labs/bifrost.env]
+
+Options:
+    --vk-file PATH    file containing the Bifrost virtual key
+                      (default: ~/.punt-labs/bifrost.env)
+    --vk-entry PATH   optional pass entry containing the Bifrost virtual key
+    --out PATH        output path (default: ~/.pi/agent/models.json)
+    --bifrost URL     Bifrost base (default: http://192.168.20.102:8080)
+    --print           print to stdout instead of writing
+    --curated LIST    comma-separated slug allowlist; default = built-in set
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+from pathlib import Path
+
+
+# Curated slugs we want visible in pi. Add here to grow the list.
+DEFAULT_CURATED = [
+    "ollama/qwen3:30b-a3b",
+    "ollama/qwen3-coder:30b-a3b-q4_K_M",
+    "anthropic/claude-opus-4-7",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-haiku-4-5-20251001",
+    "openrouter/anthropic/claude-sonnet-5",
+    "openrouter/openai/gpt-5",
+    "openrouter/openai/gpt-5.6-sol",
+    "openrouter/openrouter/auto",
+    "openai/gpt-5.6-sol",
+]
+
+# Fallback maxTokens when Bifrost's catalog omits max_output_tokens.
+# pi's default is 16384 which is misleadingly small for meta-routers;
+# override with something reasonable per model.
+MAX_TOKENS_FALLBACK = {
+    "openrouter/openrouter/auto": 30000,
+}
+
+# Ollama entries have no metadata in Bifrost's catalog — hardcode.
+OLLAMA_MANUAL = {
+    "ollama/qwen3:30b-a3b": {
+        "name": "Qwen3 30B-A3B (local, thinking)",
+        "reasoning": True,
+        "input": ["text"],
+        "contextWindow": 32768,
+        "maxTokens": 8192,
+    },
+    "ollama/qwen3-coder:30b-a3b-q4_K_M": {
+        "name": "Qwen3-Coder 30B (local, agentic)",
+        "reasoning": False,
+        "input": ["text"],
+        "contextWindow": 256000,
+        "maxTokens": 32768,
+    },
+}
+
+
+def _validate_vk(value: str, source: str) -> str:
+    vk = value.strip()
+    if not vk:
+        raise ValueError(f"empty Bifrost virtual key from {source}")
+    if "\n" in vk or "\r" in vk:
+        raise ValueError(f"Bifrost virtual key from {source} must be one line")
+    return vk
+
+
+def read_vk_file(path: str) -> str:
+    source = Path(path).expanduser()
+    return _validate_vk(source.read_text(), str(source))
+
+
+def pass_show(entry: str) -> str:
+    result = subprocess.run(
+        ["pass", "show", entry], capture_output=True, text=True, check=True
+    )
+    return _validate_vk(result.stdout, f"pass entry {entry}")
+
+
+def fetch_catalog(base: str, vk: str) -> list[dict]:
+    req = urllib.request.Request(f"{base}/v1/models", headers={"x-bf-vk": vk})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode()).get("data", [])
+
+
+def _openrouter_anthropic_candidates(model: str) -> list[str]:
+    """Generate plausible OpenRouter slugs for an Anthropic date-stamped model.
+
+    Anthropic direct uses dashed date-stamped slugs: `claude-opus-4-7`,
+    `claude-haiku-4-5-20251001`. OpenRouter mirrors them with dashes for the
+    family name and dots for the version: `claude-opus-4.7`, `claude-haiku-4.5`.
+    Strategy: try the raw form first; then progressively replace trailing
+    numeric-dash segments with dots.
+    """
+    prefix = "openrouter/anthropic/"
+    out = [prefix + model]
+    # `claude-opus-4-7`      → `claude-opus-4.7`
+    # `claude-haiku-4-5-20251001` → `claude-haiku-4.5`
+    parts = model.split("-")
+    # Strip a trailing date-like segment (long digits) — OpenRouter typically drops them
+    if parts and parts[-1].isdigit() and len(parts[-1]) >= 6:
+        parts = parts[:-1]
+    # Collapse contiguous numeric dashes at the tail into dotted decimals
+    tail_nums: list[str] = []
+    while parts and parts[-1].isdigit():
+        tail_nums.insert(0, parts.pop())
+    if tail_nums:
+        dotted = "-".join(parts) + "-" + ".".join(tail_nums)
+        out.append(prefix + dotted)
+    return out
+
+
+def openrouter_mirror_candidates(direct_id: str) -> list[str]:
+    """List of openrouter slugs to try when enriching a direct-provider entry."""
+    if direct_id.startswith("anthropic/"):
+        return _openrouter_anthropic_candidates(direct_id.split("/", 1)[1])
+    if direct_id.startswith("openai/"):
+        model = direct_id.split("/", 1)[1]
+        return [f"openrouter/openai/{model}"]
+    return []
+
+
+def find(catalog: list[dict], model_id: str) -> dict | None:
+    for m in catalog:
+        if m.get("id") == model_id:
+            return m
+    return None
+
+
+def entry_for(model_id: str, catalog: list[dict]) -> dict:
+    """Emit pi model entry, deriving fields from Bifrost's catalog."""
+    # Ollama entries are hardcoded
+    if model_id in OLLAMA_MANUAL:
+        return {"id": model_id, **OLLAMA_MANUAL[model_id]}
+
+    m = find(catalog, model_id) or {}
+
+    # For direct-provider entries, try to enrich from OpenRouter mirror
+    mirror = None
+    if not m.get("architecture") and not m.get("supported_parameters"):
+        for cand in openrouter_mirror_candidates(model_id):
+            mirror = find(catalog, cand)
+            if mirror:
+                break
+
+    src = (
+        m if (m.get("architecture") or m.get("supported_parameters")) else (mirror or m)
+    )
+
+    # contextWindow ← context_length (fallback to max_input_tokens if absent)
+    ctx = (
+        m.get("context_length")
+        or m.get("max_input_tokens")
+        or (mirror.get("context_length") if mirror else None)
+        or 128000
+    )
+
+    # maxTokens ← max_output_tokens; only include if we have an authoritative value
+    max_out = (
+        m.get("max_output_tokens")
+        or (mirror.get("max_output_tokens") if mirror else None)
+        or MAX_TOKENS_FALLBACK.get(model_id)
+    )
+    if not max_out:
+        # Loud rather than guessing pi's 16384 default — surface the gap so we
+        # know to either add the model to MAX_TOKENS_FALLBACK or push an
+        # authoritative field into Bifrost's catalog.
+        print(
+            f"WARN: no max_output_tokens for {model_id}; emitting without maxTokens",
+            file=sys.stderr,
+        )
+
+    # input modalities
+    modalities = ["text"]
+    arch = src.get("architecture") or {}
+    inputs = arch.get("input_modalities") or ["text"]
+    if "image" in inputs:
+        modalities = ["text", "image"]
+
+    # reasoning
+    sp = set(src.get("supported_parameters") or [])
+    reasoning = bool(sp & {"reasoning", "reasoning_effort", "include_reasoning"})
+    # Anthropic Sonnet-5, Opus-4-7, and Haiku-4-5 all support extended thinking upstream
+    # even though Bifrost's direct-provider catalog doesn't advertise it — set true
+    # from name pattern when no explicit field says otherwise.
+    if not reasoning and model_id.startswith("anthropic/"):
+        n = model_id.lower()
+        if any(t in n for t in ("opus-", "sonnet-", "haiku-4", "haiku-5")):
+            reasoning = True
+
+    # Pretty name
+    name = m.get("name") or model_id.split("/")[-1]
+
+    entry: dict = {
+        "id": model_id,
+        "name": name,
+        "reasoning": reasoning,
+        "input": modalities,
+        "contextWindow": ctx,
+    }
+    if max_out:
+        entry["maxTokens"] = max_out
+
+    # OpenRouter-backed → compat block
+    if model_id.startswith("openrouter/"):
+        entry["compat"] = {
+            "supportsDeveloperRole": False,
+            "thinkingFormat": "openrouter",
+        }
+
+    # Cost: keep zero/unknown; drop OpenRouter's -1 dynamic-pricing sentinel
+    pricing = src.get("pricing") or {}
+    prompt_cost = pricing.get("prompt")
+    comp_cost = pricing.get("completion")
+    if (
+        prompt_cost
+        and prompt_cost not in ("-1", -1)
+        and comp_cost
+        and comp_cost not in ("-1", -1)
+    ):
+        try:
+            # Per-million-token rate (pi uses that convention)
+            entry["cost"] = {
+                "input": round(float(prompt_cost) * 1_000_000, 6),
+                "output": round(float(comp_cost) * 1_000_000, 6),
+                "cacheRead": 0,
+                "cacheWrite": 0,
+            }
+        except ValueError:
+            pass
+
+    return entry
+
+
+def build(vk: str, credential_command: str, curated: list[str], base: str) -> dict:
+    catalog = fetch_catalog(base.rstrip("/"), vk)
+
+    return {
+        "providers": {
+            "bifrost": {
+                "baseUrl": f"{base.rstrip('/')}/openai",
+                "api": "openai-completions",
+                "apiKey": credential_command,
+                "headers": {"x-bf-vk": credential_command},
+                "models": [entry_for(slug, catalog) for slug in curated],
+            }
+        }
+    }
+
+
+def write_config_safely(path: Path, text: str) -> Path | None:
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    backup = None
+    if path.exists():
+        backup = path.with_suffix(path.suffix + ".bak")
+        suffix = 1
+        while backup.exists():
+            backup = path.with_suffix(path.suffix + f".bak.{suffix}")
+            suffix += 1
+        shutil.copy2(path, backup)
+
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
+    return backup
+
+
+def main() -> int:
+    p = argparse.ArgumentParser()
+    credentials = p.add_mutually_exclusive_group()
+    credentials.add_argument("--vk-file", default=None)
+    credentials.add_argument("--vk-entry", default=None)
+    p.add_argument("--out", default=os.path.expanduser("~/.pi/agent/models.json"))
+    p.add_argument("--bifrost", default="http://192.168.20.102:8080")
+    p.set_defaults(bifrost="http://okinos.user.home.lab:8080")
+    p.add_argument("--print", action="store_true")
+    p.add_argument("--curated", default=None)
+    args = p.parse_args()
+
+    if args.vk_entry:
+        vk = pass_show(args.vk_entry)
+        credential_command = f"!pass show {shlex.quote(args.vk_entry)}"
+    else:
+        vk_path = (
+            Path(args.vk_file or "~/.punt-labs/bifrost.env").expanduser().resolve()
+        )
+        vk = read_vk_file(str(vk_path))
+        credential_command = f"!cat {shlex.quote(str(vk_path))}"
+
+    curated = args.curated.split(",") if args.curated else DEFAULT_CURATED
+    config = build(vk, credential_command, curated, args.bifrost)
+    text = json.dumps(config, indent=2) + "\n"
+
+    if args.print:
+        print(text, end="")
+        return 0
+
+    out = Path(args.out)
+    backup = write_config_safely(out, text)
+    backup_note = f"; backup: {backup}" if backup else ""
+    count = len(config["providers"]["bifrost"]["models"])
+    print(f"wrote {out.expanduser()} ({count} models){backup_note}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
