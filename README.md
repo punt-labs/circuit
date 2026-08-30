@@ -1,5 +1,7 @@
 # circuit
 
+[![Working Backwards](https://img.shields.io/badge/Working_Backwards-hypothesis-lightgrey)](./prfaq.pdf)
+
 A tiny formal state-machine engine for agent workflow loops.
 
 `circuit` is a small real project for testing whether agent harnesses such as

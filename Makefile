@@ -17,7 +17,7 @@ GOBIN := $(shell go env GOPATH)/bin
 endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
-.PHONY: help check check-engine check-go-quality check-go-all check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi smoke-drive lint lint-engine lint-pi-extension docs test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
+.PHONY: help check check-engine check-go-quality check-go-all check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi smoke-drive lint lint-engine lint-pi-extension docs docs-pdf clean-latex test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
@@ -108,7 +108,37 @@ format-check-pi-extension: ## Check pi extension formatting
 docs: check-docs ## Lint markdown
 
 check-docs: ## Lint markdown
-	$(MARKDOWNLINT) "**/*.md" "#node_modules" "#.pi/node_modules" "#.tmp" "#.direnv"
+	$(MARKDOWNLINT) "**/*.md" "#node_modules" "#.pi/node_modules" "#.tmp" "#.direnv" "#research"
+
+# LaTeX PDFs are checked in (prfaq.pdf). Regenerating them is opt-in —
+# `make docs-pdf` — not part of `make check`, so CI doesn't need a TeX
+# toolchain. `-c` after the build sweeps latexmk's intermediates; the
+# explicit basename+extension loop sweeps the ones `-c` keeps when a
+# .bib is present (.bbl). Net: only .tex, .bib, and .pdf remain on disk.
+LATEX_TEX := prfaq.tex
+LATEX_INTERMEDIATE_EXTS := aux bbl bcf blg fdb_latexmk fls log out run.xml synctex.gz toc
+
+docs-pdf: ## Rebuild prfaq.pdf from .tex source, then sweep intermediates
+	@command -v latexmk >/dev/null || { echo "latexmk not found — install a TeX distribution" >&2; exit 1; }
+	@for f in $(LATEX_TEX); do \
+		echo "==> latexmk $$f"; \
+		latexmk -pdf -interaction=nonstopmode -halt-on-error -cd "$$f" || exit 1; \
+		latexmk -c -cd "$$f" >/dev/null || exit 1; \
+		base=$${f%.tex}; \
+		for ext in $(LATEX_INTERMEDIATE_EXTS); do \
+			rm -f "$$base.$$ext" || exit 1; \
+		done; \
+	done
+
+# Scoped to intermediates that sit next to a KNOWN .tex source in LATEX_TEX,
+# so nothing outside our own LaTeX builds is ever removed.
+clean-latex: ## Remove LaTeX build intermediates (keeps .pdf/.tex/.bib)
+	@for f in $(LATEX_TEX); do \
+		base=$${f%.tex}; \
+		for ext in $(LATEX_INTERMEDIATE_EXTS); do \
+			rm -f "$$base.$$ext" || exit 1; \
+		done; \
+	done
 
 smoke-pi: ## Run pi RPC smoke test (requires pi + model API key)
 	python3 tests/smoke/pi_rpc_smoke.py
