@@ -24,3 +24,10 @@ coverage-*.out
 
 # IDE
 .idea/
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+
+# Ethos runtime state (per-session activity logs, locks) — churns constantly, never committed
+.punt-labs/local/

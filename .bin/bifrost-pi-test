@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""Integration test for pi's bifrost provider via /openai/v1/chat/completions.
+
+Covers pi agent's 6 verifications:
+  1. Ordinary text generation
+  2. Structured tool call
+  3. Image input (multi-modal)
+  4. Reasoning parameters
+  5. Max accepted output-token value
+  6. Routing metadata (Auto router downstream selection)
+
+Runs against a single model by default (openrouter/openrouter/auto); pass
+--model to override. Exit 0 iff every enabled test passed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+BIFROST = "http://okinos.user.home.lab:8080"
+
+
+def _validate_vk(value: str, source: str) -> str:
+    vk = value.strip()
+    if not vk:
+        raise ValueError(f"empty Bifrost virtual key from {source}")
+    if "\n" in vk or "\r" in vk:
+        raise ValueError(f"Bifrost virtual key from {source} must be one line")
+    return vk
+
+
+def read_vk_file(path: str) -> str:
+    source = Path(path).expanduser()
+    return _validate_vk(source.read_text(), str(source))
+
+
+def pass_show(entry: str) -> str:
+    result = subprocess.run(
+        ["pass", "show", entry], capture_output=True, text=True, check=True
+    )
+    return _validate_vk(result.stdout, f"pass entry {entry}")
+
+
+def post(vk: str, path: str, body: dict, timeout: int = 120) -> tuple[int, dict]:
+    req = urllib.request.Request(
+        f"{BIFROST}{path}",
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={
+            "content-type": "application/json",
+            "x-bf-vk": vk,
+            "Authorization": f"Bearer {vk}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode())
+        except Exception:
+            return e.code, {}
+
+
+def _label(ok: bool, name: str, detail: str = "") -> str:
+    tag = "\033[32mPASS\033[0m" if ok else "\033[31mFAIL\033[0m"
+    return f"  [{tag}] {name}  {detail}"
+
+
+def test_text(vk: str, model: str) -> bool:
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": 2000,
+            "messages": [{"role": "user", "content": "Reply with the single word: OK"}],
+        },
+    )
+    text = ""
+    try:
+        text = body["choices"][0]["message"]["content"] or ""
+    except Exception:
+        pass
+    ok = code == 200 and "OK" in text.upper()
+    print(_label(ok, "text-generation", f"HTTP {code}  content={text[:60]!r}"))
+    return ok
+
+
+def test_tool(vk: str, model: str) -> bool:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_current_weather",
+                "description": "Get the weather for a city",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}},
+                    "required": ["city"],
+                },
+            },
+        }
+    ]
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": 2000,
+            "tools": tools,
+            "tool_choice": "required",  # deterministic capability test — force a tool call
+            "messages": [
+                {"role": "user", "content": "What's the weather in Portland?"}
+            ],
+        },
+    )
+    calls = []
+    try:
+        calls = body["choices"][0]["message"].get("tool_calls") or []
+    except Exception:
+        pass
+    ok = (
+        code == 200
+        and len(calls) >= 1
+        and calls[0].get("function", {}).get("name") == "get_current_weather"
+    )
+    args = calls[0]["function"].get("arguments") if calls else "-"
+    print(
+        _label(
+            ok,
+            "tool-call",
+            f"HTTP {code}  tool_calls={len(calls)}  args={str(args)[:60]}",
+        )
+    )
+    return ok
+
+
+def test_image(vk: str, model: str) -> bool:
+    # Opaque 64x64 yellow PNG, large enough for routed vision models to classify.
+    yellow_png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAdklEQVR4nO3PQQkA"
+        "MAzAwPo33Yno4xgEIuAyu/N1XtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUN"
+        "aEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa"
+        "0IAWNKAFDWjBsQcyl+HSnr9raQAAAABJRU5ErkJggg=="
+    )
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": 2000,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What color is this pixel? One word."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{yellow_png}"},
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    text = ""
+    try:
+        text = body["choices"][0]["message"]["content"] or ""
+    except Exception:
+        pass
+    ok = code == 200 and "yellow" in text.lower()
+    print(_label(ok, "image-input", f"HTTP {code}  reply={text[:60]!r}"))
+    return ok
+
+
+def test_reasoning(vk: str, model: str) -> bool:
+    # HTTP 200 confirms that Bifrost and the routed model accepted the
+    # OpenAI-style reasoning control. The arithmetic check guards usefulness.
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": 2000,
+            "reasoning_effort": "low",
+            "messages": [
+                {"role": "user", "content": "What is 17 * 23? Just the number."}
+            ],
+        },
+    )
+    text = ""
+    try:
+        text = body["choices"][0]["message"]["content"] or ""
+    except Exception:
+        pass
+    ok = code == 200 and "391" in text
+    print(_label(ok, "reasoning-param-accepted", f"HTTP {code}  answer={text[:60]!r}"))
+    return ok
+
+
+def test_max_tokens(vk: str, model: str, expected_max: int) -> bool:
+    # Confirm the declared maxTokens value is accepted as a request limit.
+    # This does not attempt to generate that many tokens.
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": expected_max,
+            "messages": [{"role": "user", "content": "Reply with just: ok"}],
+        },
+    )
+    err = None
+    try:
+        err = body.get("error", {}).get("message")
+    except Exception:
+        pass
+    ok = code == 200
+    print(
+        _label(
+            ok,
+            f"max_tokens={expected_max}-accepted",
+            f"HTTP {code}  err={err[:80] if err else '-'}",
+        )
+    )
+    return ok
+
+
+def test_routing_metadata(vk: str, model: str) -> bool:
+    # Auto router should populate provider/upstream info somewhere in the
+    # response. Bifrost surfaces `extra_fields.routing_info` and/or the
+    # response's model field being the resolved downstream slug.
+    code, body = post(
+        vk,
+        "/openai/v1/chat/completions",
+        {
+            "model": model,
+            "max_tokens": 32,
+            "messages": [{"role": "user", "content": "Say hi in one word."}],
+        },
+    )
+    picked = body.get("model") if isinstance(body, dict) else None
+    routing_info = None
+    try:
+        routing_info = body["extra_fields"]["routing_info"]
+    except Exception:
+        pass
+    # Pass if the response's model differs from the requested one (auto
+    # resolved to something else) OR routing metadata was returned
+    ok = code == 200 and (
+        (picked and picked != model.split("/", 1)[-1] and picked != model)
+        or bool(routing_info)
+    )
+    print(
+        _label(
+            ok,
+            "routing-metadata",
+            f"HTTP {code}  model_resolved_to={picked}  routing_info={bool(routing_info)}",
+        )
+    )
+    return ok
+
+
+def main() -> int:
+    global BIFROST
+
+    p = argparse.ArgumentParser()
+    credentials = p.add_mutually_exclusive_group()
+    credentials.add_argument("--vk-file", default=None)
+    credentials.add_argument("--vk-entry", default=None)
+    p.add_argument("--bifrost", default="http://okinos.user.home.lab:8080")
+    p.add_argument(
+        "--model",
+        default="openrouter/openrouter/auto",
+        help="model slug to test (default: openrouter/openrouter/auto)",
+    )
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=30000,
+        help="expected max output tokens for this model (see pi models.json)",
+    )
+    p.add_argument("--skip-tool", action="store_true")
+    p.add_argument("--skip-image", action="store_true")
+    p.add_argument("--skip-reasoning", action="store_true")
+    args = p.parse_args()
+
+    BIFROST = args.bifrost.rstrip("/")
+    if args.vk_entry:
+        vk = pass_show(args.vk_entry)
+    else:
+        vk = read_vk_file(args.vk_file or "~/.punt-labs/bifrost.env")
+    print(f"model = {args.model}")
+
+    results = []
+    results.append(("text", test_text(vk, args.model)))
+    if not args.skip_tool:
+        results.append(("tool", test_tool(vk, args.model)))
+    if not args.skip_image:
+        results.append(("image", test_image(vk, args.model)))
+    if not args.skip_reasoning:
+        results.append(("reasoning", test_reasoning(vk, args.model)))
+    results.append(("max_tok", test_max_tokens(vk, args.model, args.max_tokens)))
+    results.append(("routing", test_routing_metadata(vk, args.model)))
+
+    failed = [n for n, ok in results if not ok]
+    print()
+    if failed:
+        print(f"\033[31m{len(failed)}/{len(results)} FAILED:\033[0m {failed}")
+        return 1
+    print(f"\033[32mall {len(results)} passed\033[0m")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
