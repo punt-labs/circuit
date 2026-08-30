@@ -1,0 +1,116 @@
+@misc{tang2026codingagentmisalignment,
+  author       = {Tang, Ningzhi and Chen, Chaoran and Xu, Gelei and Shi, Yiyu and Huang, Yu and McMillan, Collin and Dong, Tao and Li, Toby Jia-Jun},
+  title        = {How Coding Agents Fail Their Users: A Large-Scale Analysis of Developer-Agent Misalignment in 20,574 Real-World Sessions},
+  year         = {2026},
+  url          = {https://arxiv.org/abs/2605.29442},
+  note         = {Observational study of 20,574 real coding-agent sessions across 1,639 repositories (Cursor, GitHub Copilot, Claude Code, Codex, OpenCode, Gemini CLI); quantifies instruction-following failure, developer constraint violation, and inaccurate self-reporting as recurring misalignment symptoms.},
+}
+
+@misc{cemri2025masttaxonomy,
+  author       = {Cemri, Mert and Pan, Melissa Z. and Yang, Shuyi and {others}},
+  title        = {Why Do Multi-Agent LLM Systems Fail?},
+  year         = {2025},
+  url          = {https://arxiv.org/abs/2503.13657},
+  note         = {Taxonomy of 14 multi-agent LLM failure modes (MAST) from 1,642 execution traces across 7 frameworks; argues failures are architectural, not solvable by base-model improvement alone.},
+}
+
+@online{jetbrains2026aiadoption,
+  author       = {{JetBrains}},
+  title        = {Which AI Coding Tools Do Developers Actually Use at Work?},
+  year         = {2026},
+  url          = {https://blog.jetbrains.com/research/2026/04/which-ai-coding-tools-do-developers-actually-use-at-work/},
+  urldate      = {2026-08-30},
+  note         = {AI Pulse survey, 10,000+ professional developers, January 2026 wave: 90\% use an AI tool at work; GitHub Copilot 29\%, Cursor 18\%, Claude Code 18\% workplace adoption.},
+}
+
+@online{jetbrains2026agenttrends,
+  author       = {{JetBrains}},
+  title        = {AI Coding Agents: Adoption Trends},
+  year         = {2026},
+  url          = {https://blog.jetbrains.com/research/2026/08/ai-coding-agent-adoption-2026/},
+  urldate      = {2026-08-30},
+  note         = {May-July 2026 survey wave: Copilot workplace adoption falls to 21\%, Cursor to 12\%; 68\% of developers use an AI agent daily; OpenCode reaches 7\% adoption.},
+}
+
+@online{stackoverflow2025survey,
+  author       = {{Stack Overflow}},
+  title        = {2025 Stack Overflow Developer Survey},
+  year         = {2025},
+  url          = {https://survey.stackoverflow.co/2025/ai},
+  urldate      = {2026-08-30},
+  note         = {49,009 responses, 166 countries, fielded May-June 2025. 84\% use or plan to use AI tools (up from 76\% in 2024); only 29\% trust AI output to be accurate (down from 40\% in 2024); 66\% report AI solutions are frequently close but wrong.},
+}
+
+@misc{metr2025productivity,
+  author       = {{METR}},
+  title        = {Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity},
+  year         = {2025},
+  url          = {https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/},
+  note         = {Randomized controlled study: AI coding assistance made experienced developers roughly 19\% slower on real tasks despite perceiving themselves as roughly 20\% faster.},
+}
+
+@online{langgraph2026docs,
+  author       = {{LangChain}},
+  title        = {LangGraph Overview},
+  year         = {2026},
+  url          = {https://docs.langchain.com/oss/python/langgraph/overview},
+  urldate      = {2026-08-30},
+  note         = {A compiled LangGraph StateGraph is a finite state machine whose transitions are driven by LLM outputs and tool results; graph compilation validates connections and detects cycles before execution, but transition validity is decided by the same LLM outputs being constrained.},
+}
+
+@online{sponsio2026,
+  author       = {{Sponsio}},
+  title        = {Sponsio: Runtime Contract Enforcement for AI Agents},
+  year         = {2026},
+  url          = {https://sponsio.dev/},
+  urldate      = {2026-08-30},
+  note         = {Commercial product compiling natural-language policy into deterministic finite-state-machine (LTL) contracts checked at every agent tool call, with no LLM in the enforcement path. Closest existing product to a machine-decides-not-agent-decides architecture; formal layer is LTL/finite automata, not a full B-Method abstract-machine specification.},
+}
+
+@misc{sharma2026ehv,
+  author       = {Sharma, Riddhi Mohan},
+  title        = {Ethical Hyper-Velocity (EHV): A Hardware-Rooted Zero-Trust Runtime Enforcement Architecture for Agentic AI Systems},
+  year         = {2026},
+  url          = {https://arxiv.org/abs/2605.17909},
+  note         = {Sole-author preprint, not peer reviewed. TLA+ specification of a zero-trust agent runtime with a PERMIT/DENY/ESCALATE safety invariant; the TLC model check is bounded (1,738 states, 324 distinct, depth 8).},
+}
+
+@article{newcombe2015awsformalmethods,
+  author       = {Newcombe, Chris and Rath, Tim and Zhang, Fan and Munteanu, Bogdan and Brooker, Marc and Deardeuff, Michael},
+  title        = {How Amazon Web Services Uses Formal Methods},
+  journaltitle = {Communications of the ACM},
+  year         = {2015},
+  volume       = {58},
+  number       = {4},
+  url          = {https://lamport.azurewebsites.net/tla/formal-methods-amazon.pdf},
+  note         = {Primary account by AWS engineers: seven teams used TLA+ by 2015; TLA+ model checking found subtle DynamoDB design bugs missed by design review, code review, and testing. Executive management began proactively encouraging TLA+ specs afterward.},
+}
+
+@online{clearsy2024meteor,
+  author       = {{CLEARSY}},
+  title        = {Extension of Line 14 of the Paris Metro: Over 25 Years of Reliability Thanks to the B Formal Method},
+  year         = {2024},
+  url          = {https://www.clearsy.com/en/the-tools/extension-of-line-14-of-the-paris-metro-over-25-years-of-reliability-thanks-to-the-b-formal-method/},
+  urldate      = {2026-08-30},
+  note         = {M\'et\'eor (Paris M\'etro Line 14) automatic train control software: over 110,000 lines of B model generating 86,000 lines of Ada; no bug found after proof completion through validation, integration, on-site testing, or 25+ years of revenue service.},
+}
+
+@inproceedings{lecomte2017bmethod25years,
+  author       = {Lecomte, Thierry and Deharbe, David and Prun, Etienne and Mottin, Erwan},
+  title        = {Applying a Formal Method in Industry: A 25-Year Trajectory},
+  booktitle    = {Formal Methods: Foundations and Applications (SBMF 2017)},
+  series       = {Lecture Notes in Computer Science},
+  volume       = {10623},
+  pages        = {70--87},
+  year         = {2017},
+  url          = {https://arxiv.org/abs/2005.07190},
+  note         = {Retrospective on the B-Method's industrial trajectory since M\'et\'eor Line 14, including B's adoption by Alstom's CBTC product line (roughly 100 metro lines worldwide).},
+}
+
+@misc{mathews2024testgenerators,
+  author       = {Mathews, Noble Saji and Nagappan, Meiyappan},
+  title        = {Design Choices Made by LLM-Based Test Generators Prevent Them from Finding Bugs},
+  year         = {2024},
+  url          = {https://arxiv.org/abs/2412.14137},
+  note         = {Evaluation of GitHub Copilot, Codium CoverAgent, and CoverUp on the Refactory dataset (2,442 correct and 1,783 buggy human-written Python programs); up to 68.1\% of one tool's final generated test suites passed on incorrect implementations while failing on correct ones, with broader averages near 26--35\% depending on whether the model saw buggy code.},
+}
