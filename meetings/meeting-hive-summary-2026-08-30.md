@@ -59,7 +59,7 @@ None. All seven hot spots reached consensus with zero escalations.
 
 ## Research Completed
 
-None during the meeting. The document's existing evidence base (research/research-2026-08-30-circuit-prfaq.md) supplied all figures debated.
+None during the meeting. The evidence base the prfaq researcher cached locally under `research/` (gitignored, regenerated on demand) supplied all figures debated; the durable citations live in `prfaq.bib`.
 
 ## Notes
 

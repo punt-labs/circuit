@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Working Backwards PR/FAQ (`prfaq.tex`, `prfaq.bib`, compiled `prfaq.pdf`) at
-  hypothesis stage v1.0, peer-review PASS, with cited evidence base under
-  `research/` (gitignored)
+  hypothesis stage, with a locally cached evidence base under `research/`
+  (gitignored); revised to v2.0 within this unreleased cycle (see Changed)
 - MIT `LICENSE`
 - Working Backwards stage badge in `README.md`, linking to the compiled PDF
 - `make docs-pdf` and `make clean-latex` targets for rebuilding the PR/FAQ
