@@ -107,6 +107,24 @@
   note         = {Retrospective on the B-Method's industrial trajectory since M\'et\'eor Line 14, including B's adoption by Alstom's CBTC product line (roughly 100 metro lines worldwide).},
 }
 
+@online{zspec2026,
+  author       = {{Punt Labs}},
+  title        = {z-spec: A Formal Specification Toolkit for Z and the B-Method},
+  year         = {2026},
+  url          = {https://github.com/punt-labs/z-spec},
+  urldate      = {2026-08-30},
+  note         = {Free MIT-licensed toolkit shipping as a \texttt{z-spec} CLI, an MCP server, and an optional Claude Code plugin; a CLI-only install (\texttt{--no-plugin}) covers other harnesses. Setup installs and configures fuzz and ProB. B-Method support (b-create, b-check, b-animate, b-refine) is alpha: the commands work with probcli but have not been tested across a wide range of specifications.},
+}
+
+@online{zspecprfaq2026,
+  author       = {{Punt Labs}},
+  title        = {z-spec PR/FAQ, v2.1 (Hypothesis Stage)},
+  year         = {2026},
+  url          = {https://github.com/punt-labs/z-spec/blob/main/prfaq.pdf},
+  urldate      = {2026-08-30},
+  note         = {Internal-adoption record for the z-spec toolkit: 57 real specification files across 8 sibling Punt Labs repositories (lux 26, vox 12, biff 10, the rest across quarry, ethos, beadle, koch-trainer-swift, and mcp-proxy), roughly low-forties distinct subsystems; the Koch Trainer iOS app specified spec-first with ProB validating the state machine before implementation; deliberate falsification-test spec variants; biff, vox, and lux made the practice mandatory on 2026-07-04. Product at v0.20.2 with 21 commands on PyPI; B-Method support shipped alpha with B maturation a named roadmap item.},
+}
+
 @misc{mathews2024testgenerators,
   author       = {Mathews, Noble Saji and Nagappan, Meiyappan},
   title        = {Design Choices Made by LLM-Based Test Generators Prevent Them from Finding Bugs},

@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- PR/FAQ revised to v2.1: z-spec named as the shipped authoring layer for
+  agent-drafted machines (external FAQs state the launch path; internal
+  technical risks carry today's alpha status and the z-spec adoption
+  record); comparative and handoff authoring tests added to the validation
+  plan; `feat:zspec-profile` (circuit-profile target in `b-create`)
+  promoted to Must Do; design-time-plus-runtime suite framing added to
+  the competitive FAQ
 - PR/FAQ revised to v2.0 after an autonomous hive review meeting (7 hot
   spots, all resolved REVISE by 4-0 consensus): customer redefined as
   supervising gate-disciplined teams seeking permission to go unattended;
