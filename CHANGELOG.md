@@ -18,6 +18,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- PR/FAQ revised to v2.0 after an autonomous hive review meeting (7 hot
+  spots, all resolved REVISE by 4-0 consensus): customer redefined as
+  supervising gate-disciplined teams seeking permission to go unattended;
+  competitive framing shifted to an open-standard race with authoring
+  throughput as a tested risk; Circuit-B confirmed as the public primitive
+  with agent-drafted machines as an endorsed layer; a designed
+  session-boundary check-provenance guard replaces code-review-as-mitigation;
+  revenue bet made accountable via a fifth internal-adoption metric;
+  timeline resequenced around evidence with drive-vs-tool-call honesty and
+  a no-MCP per-harness integration ruling; TAM terminal numbers dropped in
+  favor of a measured interview funnel. Post-revision peer review fixes and
+  a streamline pass included. Meeting record in
+  `meetings/meeting-hive-summary-2026-08-30.md`
 - `make check-docs` now excludes the generated `research/` directory from
   markdown linting
 - `.gitignore` covers the generated `research/` cache
