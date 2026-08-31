@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Working Backwards PR/FAQ (`prfaq.tex`, `prfaq.bib`, compiled `prfaq.pdf`) at
-  hypothesis stage, with a locally cached evidence base under `research/`
-  (gitignored); revised to v2.0 within this unreleased cycle (see Changed)
+  hypothesis stage, with the researcher's evidence base tracked under
+  `research/`; revised to v2.0 within this unreleased cycle (see Changed)
 - MIT `LICENSE`
 - Working Backwards stage badge in `README.md`, linking to the compiled PDF
 - `make docs-pdf` and `make clean-latex` targets for rebuilding the PR/FAQ
@@ -31,6 +31,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   favor of a measured interview funnel. Post-revision peer review fixes and
   a streamline pass included. Meeting record in
   `meetings/meeting-hive-summary-2026-08-30.md`
-- `make check-docs` now excludes the generated `research/` directory from
-  markdown linting
-- `.gitignore` covers the generated `research/` cache
+- `make check-docs` excludes the generated `research/` directory from
+  markdown linting (agent-generated output, tracked but not lint-gated)
