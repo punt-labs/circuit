@@ -9,8 +9,8 @@ uses B-Method abstract machines as the formal model for workflow definitions.
 
 ## Mandatory reading
 
-- `docs/DEVELOPMENT.md`
-- `docs/TESTING.md`
+- `docs/development.md`
+- `docs/testing.md`
 
 ## Development rules
 

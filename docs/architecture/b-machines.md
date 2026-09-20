@@ -2,8 +2,13 @@
 
 ## Status
 
-Design note. This is the current working direction for making `circuit` a
-formal, locally hosted state-machine guide for agent harnesses.
+Historical design note. This document records the rationale and intended shape
+that led to the current implementation. For accepted decisions and current
+behavior, use [`decisions.md`](decisions.md),
+[`../../README.md`](../../README.md), and
+[`../operations/run-contract.md`](../operations/run-contract.md). Future-tense
+sections below
+preserve the original design context and are not an implementation-status list.
 
 ## Thesis
 
@@ -23,21 +28,20 @@ Harnesses such as pi, Claude Code, and opencode do not define workflow
 semantics. They observe facts, present status, and request operations against the
 machine. The machine is the source of truth for valid progress.
 
-## Spike roadmap
+## Spike outcome
 
-Three spikes define the current direction:
+The design was tested through three implementation spikes:
 
-1. **B-machine runtime.** Prove Go can parse and evaluate a strict Circuit-B
-   profile from the same `.mch` files that ProB checks during development.
-2. **Pi hosts Circuit.** Prove pi can start an active circuit, report status,
-   and request transitions through the Go runtime without duplicating machine
-   logic.
-3. **Circuit drives pi.** Test Circuit as the outer runner that owns machine
-   state and drives `pi --mode rpc` as an agent backend.
+1. **B-machine runtime.** Go parses and evaluates a strict Circuit-B profile
+   from the same `.mch` files that ProB checks during development.
+2. **Pi hosts Circuit.** The pi extension starts sessions, reports status, and
+   requests transitions through the Go CLI without duplicating machine logic.
+3. **Circuit drives pi.** The `drive` command owns machine state and drives
+   `pi --mode rpc` as an agent backend.
 
-Spike 1 and the pi-hosted part of spike 2 now have working code. The next
-useful proof is richer check binding behavior and then the circuit-driven pi RPC
-spike.
+Subsequent work added external check bindings, multi-session persistence,
+machine-local prompts, blocked-transition retry, and driver traces. Current
+behavior is summarized in the top-level README and run contract.
 
 ## Motivation
 
@@ -668,26 +672,16 @@ for source positions, AST shape, error lists, and diagnostics.
 
 ## Development gates
 
-Add a `check-machines` target once `machines/` exists.
+The repository keeps dependency-light implementation checks separate from
+formal checks:
 
-Near-term direct ProB target:
+- `make check` validates Go, RPC, the pi extension, and documentation;
+- `make check-specs` validates the formal runtime specification;
+- `make check-machines` initializes and model-checks the shipped B machines;
+- smoke targets exercise live pi integration when credentials are available.
 
-```make
-check-machines:
-        probcli machines/build-job.mch -init
-        probcli machines/build-job.mch -model_check
-```
-
-Later, when z-spec B commands are available:
-
-```make
-check-machines:
-        z-spec b-animate machines/build-job.mch
-```
-
-The aggregate `make check` should include `check-machines` only when the dev shell
-or repo toolchain guarantees ProB availability. Otherwise, use a separate target
-and document that release validation requires it.
+This separation keeps normal runtime and local implementation checks independent
+of ProB while retaining explicit formal release gates.
 
 ## Open questions
 
@@ -703,14 +697,11 @@ and document that release validation requires it.
 6. Should Circuit later support `.ref` refinement files for implementation
    strategies, or keep refinements development-only?
 
-## Recommendation
+## Outcome
 
-Proceed with a narrow Circuit-B parser and evaluator in Go.
-
-Do not parse all B. Parse and execute a strict finite-state-machine profile.
-Use ProB as the development and release oracle. Keep the `.mch` file as the
-runtime artifact so that readability remains central.
-
-The next implementation spike should use `build-job.mch` first, not pi. Once
-`start`, `status`, and `advance` work against that machine, add a real
-`PRWatch.mch` and then test both pi integration relationships.
+The recommendation was adopted: Circuit uses a narrow Circuit-B parser and
+evaluator in Go rather than attempting all of B. ProB remains the development
+and release oracle, and `.mch` files remain runtime artifacts. Both pi
+integration relationships were implemented and tested. Further changes to this
+architecture belong in top-level ADRs rather than revisions to this historical
+note.

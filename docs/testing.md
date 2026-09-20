@@ -129,20 +129,14 @@ Requires pi binary and a model API key. Tests the full extension
 command surface: list, start, status, advance through pi RPC. Exits
 0 on success, 1 on failure.
 
-## Coverage targets
+## Coverage policy
 
-Non-command packages should maintain ≥85% statement coverage:
+Core-package coverage is enforced by the repository's configured gates. CLI and
+pi-extension coverage is reported rather than gated because those surfaces are
+thin adapters over the core runtime. Keep threshold policy in executable
+configuration instead of duplicating values in prose.
 
-```text
-internal/circuitb     ≥85%
-internal/circuitrun   ≥85%
-internal/circuitrpc   ≥85%
-```
-
-CLI and pi extension coverage is reported but not gated because those
-packages are thin adapters over the core runtime.
-
-Run `make coverage` to see all tier summaries.
+Run `make coverage` to see current tier summaries.
 
 ## Continuous integration
 

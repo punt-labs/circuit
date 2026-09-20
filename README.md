@@ -1,4 +1,4 @@
-# circuit
+# Circuit
 
 [![Working Backwards](https://img.shields.io/badge/Working_Backwards-hypothesis-lightgrey)](./prfaq.pdf)
 
@@ -15,8 +15,58 @@ Shipped workflow machines are authored as
 model-checked with ProB during development, and interpreted by Go at runtime
 without requiring ProB for normal use.
 
-Design notes: [`docs/design/b-machines.md`](docs/design/b-machines.md) and
-[`docs/spec/circuit-runtime.tex`](docs/spec/circuit-runtime.tex).
+Start with this README. The complete documentation index and naming convention
+are in [`docs/README.md`](docs/README.md). Key references:
+
+- [`docs/development.md`](docs/development.md) for the development environment;
+- [`docs/testing.md`](docs/testing.md) for gates and test layers;
+- [`docs/operations/run-contract.md`](docs/operations/run-contract.md) for
+  Circuit-driven agent runs;
+- [`docs/project/roadmap.md`](docs/project/roadmap.md) for planned work and its
+  source documents;
+- [`docs/architecture/decisions.md`](docs/architecture/decisions.md) for
+  accepted architectural decisions;
+- [`docs/architecture/b-machines.md`](docs/architecture/b-machines.md) for the
+  original B-machine design rationale;
+- [`docs/spec/circuit-runtime.tex`](docs/spec/circuit-runtime.tex) for the
+  formal runtime design specification.
+
+## Quick start
+
+Enter the reproducible development shell, build the CLI, and inspect the
+available machines:
+
+```bash
+nix develop
+make build
+./circuit list
+```
+
+Run a machine directly:
+
+```bash
+./circuit start build-job
+./circuit status
+./circuit advance start
+./circuit advance finish
+```
+
+The final transition reaches a terminal state and stops that session. Session
+state is persisted under `.tmp/sessions/`, so later CLI invocations resume it.
+When multiple sessions are active, pass the session ID printed by `start` to
+`status`, `advance`, or `stop`.
+
+To let Circuit drive a pi agent through a machine, use a machine that has a
+companion prompt file:
+
+```bash
+./circuit drive tdd-flow --task "describe the implementation task"
+```
+
+This mode requires pi and model credentials. Circuit owns machine state and
+transition checks; pi performs the work and requests transition events. See
+[`docs/operations/run-contract.md`](docs/operations/run-contract.md) for the
+prompt, check, response, and trace contracts.
 
 ## Why this exists
 
@@ -46,10 +96,8 @@ Implemented now:
 - Nix development shell with golangci-lint matching ethos conventions
 - `make check` gate for engine, RPC protocol, pi extension, and docs
 - project-local pi extension at `.pi/extensions/circuit.ts` with context
-  injection via `before_agent_start`, eight LLM tools (`circuit_list`,
-  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`, `circuit_unload`), and `/circuit` slash
-  commands for human control
+  injection via `before_agent_start`, LLM tools matching the `/circuit` slash
+  commands, and human control through those slash commands
 - B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`,
   `tdd-flow`
 - Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
@@ -57,18 +105,17 @@ Implemented now:
   session IDs and auto-stop on terminal states
 - RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
   test
-- CLI commands: `list`, `load`, `scaffold`, `start`, `status`, `advance`,
-  `stop`, `unload`
+- CLI commands for machine discovery, validation, scaffolding, session
+  lifecycle, transition requests, JSON output, and end-to-end agent driving
 - check bindings for runtime preconditions with invocation tracking; machines
   with BOOL facts must load with complete bindings before they can start
 - `retry-flow` machine proving block/retry loops work
 - `tdd-flow` machine modeling red-green-refactor with external checks for
   observed failing tests and passing test suites
-- ProB development gate: `make check-machines`
-- automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
-  smoke test
-- first live test: agent called `circuit_status` then `circuit_advance`
-  unprompted and progressed `build-job` from `idle` to `running`
+- separate implementation, structural-quality, formal-machine, formal-spec,
+  and live pi smoke gates
+- live evidence for pi-hosted tool use, blocked-transition retry, and
+  Circuit-driven TDD/refactoring workflows
 
 ## Direction: B machines
 
@@ -231,192 +278,40 @@ Every token and AST node should retain source location information so that
 syntax errors, type errors, and profile violations can point back to the author
 source.
 
-## Nix-first development
+## Integrations
 
-`circuit` is Nix-first from the start.
+Circuit currently supports pi in two modes:
 
-The dev shell provides Go, Node, markdown linting, staticcheck, ProB 1.15.1,
-Beads, GitHub CLI, and shell tooling. Normal development should happen inside
-the Nix shell:
+- **Pi-hosted:** project-local slash commands and LLM tools call the Go CLI;
+  Circuit validates every requested transition.
+- **Circuit-driven:** `circuit drive` owns the workflow and uses pi RPC as the
+  agent backend.
 
-```bash
-nix develop
-make check
-```
+Other harnesses can invoke the CLI in tool-call mode. Native Claude Code and
+opencode integrations remain planned. Integration details and limitations are
+in [`docs/operations/harnesses.md`](docs/operations/harnesses.md).
 
-Non-Nix development should remain possible for contributors who already have
-the required tools installed.
+## Implementation status
 
-## Continuous integration
+The initial scaffold, toolchain, Circuit-B engine, session runtime, pi-hosted
+adapter, and Circuit-driven pi path are implemented. The current work is product
+validation and hardening rather than proving the basic architecture:
 
-GitHub Actions runs `make check`, `make check-go-quality`, and
-`make check-machines` inside the Nix dev shell for pushes to `main` and
-`feat/**`, and for pull requests targeting `main`.
-The project-local `nix/probcli.nix` derivation pins ProB 1.15.1 and its runtime
-requirements, including the Java parser.
+- compare guided and unguided outcomes on realistic workflows;
+- broaden external evidence beyond local command checks;
+- improve concurrent-session safety and selection UX;
+- make machine authoring and handoff easier without weakening formal checks.
 
-## Make targets
+Current evidence and unresolved questions are tracked in
+[`docs/project/risks.md`](docs/project/risks.md). Accepted architectural
+decisions are recorded in
+[`docs/architecture/decisions.md`](docs/architecture/decisions.md), not in
+milestone prose here.
 
-The root Makefile is organized around product surfaces, not implementation
-languages:
+## Contributing
 
-- `check-engine` validates the Go engine/CLI.
-- `check-pi-extension` validates the project-local pi extension.
-- `check-docs` validates Markdown documentation.
-- `check-specs` validates formal Z design specs with fuzz and ProB.
-- `check-machines` validates B machines with ProB for development/release.
-- `check` runs the automated aggregate gate.
-- `check-go-quality` runs the structural Go quality gate used by `tdd-flow`.
-
-Additional targets:
-
-- `lint` — alias for `lint-engine`
-- `test` — runs all tests: Go engine, RPC protocol, and pi extension
-- `build` — alias for `build-engine`
-- `docs` — alias for `check-docs`
-- `format` — auto-format Go and TypeScript
-- `coverage` — show coverage summary for all tiers
-- `check-runtime-spec` — type-check the Circuit runtime Z spec with z-spec
-- `model-check-runtime-spec` — model-check the Circuit runtime Z spec with ProB
-- `smoke-pi` — pi RPC smoke test (requires pi + model API key)
-- `smoke-drive` — Circuit-drives-Pi smoke test (requires pi + model API key)
-- `tools` — install development tools (golangci-lint)
-- `install` — build and install to `~/.local/bin`
-
-## Harness testbed
-
-See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for local setup,
-[`docs/HARNESS.md`](docs/HARNESS.md) for harness notes, and
-[`docs/TESTING.md`](docs/TESTING.md) for the testing pyramid.
-
-`circuit` is also our smallest cross-harness test project. We will test each
-harness according to its own idioms instead of forcing Claude Code conventions
-onto the others.
-
-### Shared instructions
-
-`AGENTS.md` is the intended harness-neutral instruction source. Claude Code may
-use `CLAUDE.md` as a small entrypoint/addendum. Pi's observed behavior in this
-repo loads the shared instructions from `AGENTS.md`.
-
-### pi
-
-Pi support currently includes a project-local TypeScript extension:
-
-```text
-.pi/extensions/circuit.ts
-```
-
-The extension shells out to the Go CLI and keeps transition logic in Go. Current
-commands:
-
-Slash commands (human control):
-
-- `/circuit list`
-- `/circuit load <machine>`
-- `/circuit scaffold <machine>`
-- `/circuit start <machine>`
-- `/circuit status [session]`
-- `/circuit advance <event> [session]`
-- `/circuit stop [session]`
-- `/circuit unload <session>`
-
-LLM tools (agent calls these directly):
-
-- `circuit_list`
-- `circuit_load`
-- `circuit_scaffold`
-- `circuit_start`
-- `circuit_status`
-- `circuit_advance`
-- `circuit_stop`
-- `circuit_unload`
-
-Full parity: anything the human can do, the agent can do. The B-backed
-Go runtime decides whether progress is valid.
-
-The other relationship — circuit as the outer runner driving `pi --mode rpc` —
-was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
-state, sent prompts, observed `agent_settled`, extracted the agent's chosen
-operation, and validated it against the machine before advancing.
-
-### Claude Code
-
-Claude Code support should stay native:
-
-- `CLAUDE.md` for Claude-specific entrypoint/addendum
-- optional `.claude/commands/` later
-- no hooks or subagents until the B-machine contract is stable
-
-### opencode
-
-Opencode support should stay native:
-
-- `AGENTS.md`
-- optional `opencode.json` once we actively test opencode
-
-## Near-term milestones
-
-### Milestone 0: scaffold
-
-Done:
-
-- README
-- Nix-first development decision
-- Go language decision
-- harness strategy
-
-### Milestone 1: toolchain gates
-
-Done:
-
-- `flake.nix`
-- `flake.lock`
-- `make check`
-- Go/staticcheck/markdownlint tooling
-- pi extension TypeScript tooling
-
-### Milestone 2: B-machine foundation
-
-Done:
-
-- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`,
-  `machines/tdd-flow.mch`
-- ProB development gate: `make check-machines`
-- multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
-- multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
-- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`,
-  `unload`
-- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`, and
-  generated false stubs from `scaffold`
-- golangci-lint adopted matching ethos conventions
-- test coverage ≥85% on core packages
-
-### Milestone 3: harness spikes
-
-Done:
-
-- spike 2: pi hosts circuit — `/circuit` commands shell out to Go CLI
-- spike 3: circuit drives pi — Go runner owns B-machine state, sends prompts
-  to `pi --mode rpc`, validates agent responses against the machine
-- both relationships use the same `.mch` files and Go evaluator
-
-### Milestone 4: usefulness proof
-
-In progress:
-
-- context injection: `before_agent_start` injects current circuit state and
-  valid operations into the agent's context on every turn
-- LLM tools: full parity with slash commands — `circuit_list`,
-  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`, `circuit_unload`
-- gating: `circuit_advance` tool enforces B-machine preconditions; blocked
-  transitions produce agent-visible feedback with failed conditions
-- session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with
-  per-session auto-stop on terminal states; no injection when no session is
-  active; multiple active sessions inject together
-- first live test: agent called `circuit_status` then `circuit_advance`
-  unprompted and progressed `build-job` from `idle` to `running`
+Contributor setup, development practices, quality gates, and pull-request
+expectations are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Design principle
 

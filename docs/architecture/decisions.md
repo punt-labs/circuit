@@ -212,8 +212,8 @@ circuits without human intervention.
 
 **Evidence:** Milestone 4 proved this. The agent called `circuit_status`
 then `circuit_advance` unprompted and progressed `build-job` from
-`idle` to `running`. All seven tools are registered; parsing,
-formatting, and Go command behavior are tested.
+`idle` to `running`. The tool surface matches the slash-command surface;
+parsing, formatting, and Go command behavior are tested.
 
 **Constraints:**
 
@@ -241,27 +241,26 @@ circuit state.
 - The injection is a custom message with `display: false` so it
   participates in LLM context but does not clutter the TUI.
 
-## ADR 12: Automated testing pyramid with coverage targets
+## ADR 12: Layered automated testing with coverage gates
 
-**Decision:** Every tier of the testing pyramid is automated. No
-manual-only tests. Core packages maintain ≥85% statement coverage.
+**Decision:** Every test layer is automated. Core packages have coverage gates,
+and formal and live integration checks remain explicit targets because they
+require additional tools or credentials.
 
-**Evidence:** All tiers are implemented and pass in `make check`:
-
-- Go unit tests: circuitb 85%, circuitrun 85%, circuitrpc 97%
-- Go CLI tests: 86%
-- TypeScript unit tests: 100% statements
-- TypeScript typecheck/lint/format
-- golangci-lint
-- markdownlint
-- ProB model-check (`make check-machines`)
-- Pi RPC smoke (`make smoke-pi`)
-- Fake-pi integration test
+**Evidence:** The repository automates Go engine and CLI tests, RPC protocol
+and fake-backend integration tests, TypeScript extension tests and static
+checks, documentation linting, formal specification validation, B-machine model
+checking, and live pi smoke paths. `make check` runs the dependency-light local
+aggregate; `make check-specs`, `make check-machines`, and the smoke targets run
+the layers with additional dependencies.
 
 **Constraints:**
 
-- `make check` auto-formats then runs all automated gates.
-- Coverage must not regress below 85% on core packages.
+- `make check` auto-formats, then validates Go, RPC, the pi extension, and
+  documentation.
+- Formal specification checks, B-machine checks, and live pi smoke tests must
+  stay separately callable and documented.
+- Coverage must not regress below the configured core-package thresholds.
 - New features require tests before or alongside implementation.
 
 ## ADR 13: golangci-lint matching ethos conventions
