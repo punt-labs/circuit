@@ -131,10 +131,10 @@ command surface: list, start, status, advance through pi RPC. Exits
 
 ## Coverage policy
 
-Core-package coverage is enforced by the repository's configured gates. CLI and
-pi-extension coverage is reported rather than gated because those surfaces are
-thin adapters over the core runtime. Keep threshold policy in executable
-configuration instead of duplicating values in prose.
+Go coverage is recorded and reported but does not currently have an executable
+threshold gate. The pi extension enforces its configured Vitest coverage
+thresholds. Keep threshold values in executable configuration instead of
+duplicating volatile numbers in prose.
 
 Run `make coverage` to see current tier summaries.
 

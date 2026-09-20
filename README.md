@@ -55,7 +55,12 @@ exist:
 
 The final transition reaches a terminal state and stops that session. Session
 state is persisted under `.tmp/sessions/`, so later CLI invocations resume it.
-Replace the example ID with the value printed by `start`.
+Replace the example ID with the value printed by `start`, then remove the stopped
+example session before starting the driven example:
+
+```bash
+./circuit unload build-job-a3f8
+```
 
 To let Circuit drive a pi agent through a machine, install the checked-in pi
 extension dependencies, then use a machine that has a companion prompt file:

@@ -1,8 +1,9 @@
 # Documentation
 
 Circuit documentation uses lowercase file names and groups material by purpose.
-The repository root retains only conventional entry-point and governance files:
-`README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `AGENTS.md`, and `CLAUDE.md`.
+Root-level user, contributor, and governance documentation is limited to the
+conventional entry points `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`,
+`AGENTS.md`, and `CLAUDE.md`. Detailed documentation belongs under `docs/`.
 
 ## Start here
 

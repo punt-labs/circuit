@@ -241,11 +241,12 @@ circuit state.
 - The injection is a custom message with `display: false` so it
   participates in LLM context but does not clutter the TUI.
 
-## ADR 12: Layered automated testing with coverage gates
+## ADR 12: Layered automated testing with coverage reporting
 
-**Decision:** Every test layer is automated. Core packages have coverage gates,
-and formal and live integration checks remain explicit targets because they
-require additional tools or credentials.
+**Decision:** Every test layer is automated. Go coverage is reported, the pi
+extension enforces its configured coverage thresholds, and formal and live
+integration checks remain explicit targets because they require additional
+tools or credentials.
 
 **Evidence:** The repository automates Go engine and CLI tests, RPC protocol
 and fake-backend integration tests, TypeScript extension tests and static
@@ -260,7 +261,8 @@ the layers with additional dependencies.
   documentation.
 - Formal specification checks, B-machine checks, and live pi smoke tests must
   stay separately callable and documented.
-- Coverage must not regress below the configured core-package thresholds.
+- Coverage policy must match executable configuration; prose must not claim an
+  unenforced threshold.
 - New features require tests before or alongside implementation.
 
 ## ADR 13: golangci-lint matching ethos conventions

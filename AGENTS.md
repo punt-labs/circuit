@@ -30,10 +30,12 @@ uses B-Method abstract machines as the formal model for workflow definitions.
   not merely perform the equivalent steps by hand.
 - For pull requests, start `pr-watch` after opening the PR and keep its session
   active until the PR merges or is explicitly stopped.
-- Before each workflow action, call `circuit_status` for the active session and
-  follow the machine's current state and enabled operations.
-- Request every state change with `circuit_advance`. Never claim workflow
-  progress unless that call succeeds.
+- Before each workflow action, inspect the active session with the harness
+  adapter's status operation or `circuit status <session>`, then follow the
+  machine's current state and enabled operations.
+- Request every state change with the harness adapter's advance operation or
+  `circuit advance <event> <session>`. Never claim workflow progress unless the
+  request succeeds.
 - Treat blocked transitions as authoritative. Gather the required evidence or
   complete the required work, then retry; do not bypass or narrate past a block.
 - Continue monitoring CI, reviews, review threads, fixes, and merge readiness
