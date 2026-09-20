@@ -42,24 +42,26 @@ make build
 ./circuit list
 ```
 
-Run a machine directly:
+Run a machine directly. Record the session ID printed by `start` and use it in
+subsequent commands so the example remains unambiguous when other sessions
+exist:
 
 ```bash
 ./circuit start build-job
-./circuit status
-./circuit advance start
-./circuit advance finish
+./circuit status build-job-a3f8
+./circuit advance start build-job-a3f8
+./circuit advance finish build-job-a3f8
 ```
 
 The final transition reaches a terminal state and stops that session. Session
 state is persisted under `.tmp/sessions/`, so later CLI invocations resume it.
-When multiple sessions are active, pass the session ID printed by `start` to
-`status`, `advance`, or `stop`.
+Replace the example ID with the value printed by `start`.
 
-To let Circuit drive a pi agent through a machine, use a machine that has a
-companion prompt file:
+To let Circuit drive a pi agent through a machine, install the checked-in pi
+extension dependencies, then use a machine that has a companion prompt file:
 
 ```bash
+npm --prefix .pi ci
 ./circuit drive tdd-flow --task "describe the implementation task"
 ```
 
