@@ -1,6 +1,8 @@
 # Documentation
 
-Circuit documentation uses lowercase file names and groups material by purpose.
+Detailed Circuit documentation uses lowercase file names and is grouped by
+purpose. `README.md` remains capitalized as the conventional index-file
+exception at the repository root and within `docs/`.
 Root-level user, contributor, and governance documentation is limited to the
 conventional entry points `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`,
 `AGENTS.md`, and `CLAUDE.md`. Detailed documentation belongs under `docs/`.
