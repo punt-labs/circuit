@@ -49,7 +49,7 @@ typecheck/lint/test, and markdown linting.
 
 ## Harness work
 
-Harness behavior is documented in `docs/HARNESS.md`. Testing expectations are
-documented in `docs/TESTING.md`. Keep harness adapters thin: the Go CLI owns the
+Harness behavior is documented in `docs/operations/harnesses.md`. Testing
+expectations are documented in `docs/testing.md`. Keep harness adapters thin: the Go CLI owns the
 engine behavior, and harness-specific code should wrap that CLI rather than
 reimplement it.

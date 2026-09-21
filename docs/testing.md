@@ -129,20 +129,14 @@ Requires pi binary and a model API key. Tests the full extension
 command surface: list, start, status, advance through pi RPC. Exits
 0 on success, 1 on failure.
 
-## Coverage targets
+## Coverage policy
 
-Non-command packages should maintain ≥85% statement coverage:
+Go coverage is recorded and reported but does not currently have an executable
+threshold gate. The pi extension enforces its configured Vitest coverage
+thresholds. Keep threshold values in executable configuration instead of
+duplicating volatile numbers in prose.
 
-```text
-internal/circuitb     ≥85%
-internal/circuitrun   ≥85%
-internal/circuitrpc   ≥85%
-```
-
-CLI and pi extension coverage is reported but not gated because those
-packages are thin adapters over the core runtime.
-
-Run `make coverage` to see all tier summaries.
+Run `make coverage` to see current tier summaries.
 
 ## Continuous integration
 

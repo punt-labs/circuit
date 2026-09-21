@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `CONTRIBUTING.md` as the contributor entry point for development setup,
+  practices, gates, and pull-request expectations
+- A durable `docs/project/roadmap.md` that consolidates planned product,
+  authoring, formal-method, and harness-integration work with links to its
+  source documents
 - Working Backwards PR/FAQ (`prfaq.tex`, `prfaq.bib`, compiled `prfaq.pdf`) at
   hypothesis stage, with the researcher's evidence base tracked under
   `research/`; revised to v2.0 within this unreleased cycle (see Changed)
@@ -18,6 +23,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The root README now focuses on end users; contributor and harness-development
+  details link to their dedicated documentation
+- Documentation is organized under lowercase `docs/` paths by architecture,
+  operations, and project status, with standardized product-name capitalization
+- Documentation now provides a direct quick start, documents the implemented
+  `drive` path and gate boundaries, distinguishes historical design notes from
+  current behavior, and updates the risk register to reflect completed
+  multi-step workflow evidence without volatile test counts
 - PR/FAQ revised to v2.1: z-spec named as the shipped authoring layer for
   agent-drafted machines (external FAQs state the launch path; internal
   technical risks carry today's alpha status and the z-spec adoption
