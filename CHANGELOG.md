@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Clear 7 open Dependabot alerts (2 high) in the pi extension
+  (`.pi/package-lock.json`): vite 8.2.1 → 8.3.5, source-map-js 1.2.1 → 1.2.2,
+  vitest and `@vitest/coverage-v8` 4.1.10 → 4.1.11.
+
 ### Added
 
 - Working Backwards PR/FAQ (`prfaq.tex`, `prfaq.bib`, compiled `prfaq.pdf`) at
