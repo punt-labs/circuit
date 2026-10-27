@@ -19,6 +19,9 @@ uses B-Method abstract machines as the formal model for workflow definitions.
 - Use the Nix dev shell for build, test, lint, and Beads work.
 - Keep changes small and easy to review.
 - Run `make check` before committing.
+- PR review follows punt-kit/standards/pr-review.md: local review (qodo review +
+  silent-failure-hunter + code-reviewer) before the PR, then Qodo and Bugbot once
+  at open, at most two rounds, Copilot only on request.
 - Prefer structural validation over execution until the state-machine design is
   settled.
 - Do not add scheduler, GitHub API, MCP, or persistence behavior without a

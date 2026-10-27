@@ -1,0 +1,35 @@
+# Qodo v2 review config (punt-kit pr_agent.toml template). One review on open, no per-push re-review, only High findings inline.
+[github_app]
+ignore_bot_pr = true
+pr_commands = ["/agentic_describe", "/agentic_review"]
+handle_push_trigger = false
+
+[review_agent]
+enable_incremental_review = true
+# comments_routing below is authoritative; the threshold restates it (High only inline).
+inline_comments_severity_threshold = 3
+issues_user_guidelines = """
+circuit is a Go state-machine engine for agent workflow loops (B-Method abstract machines interpreted at runtime), with a TypeScript pi extension in .pi/ and an RPC protocol layer.
+Targets: macOS and Linux, built through the Nix dev shell. Nothing else.
+Report every finding in this one pass; do not hold findings back for a later pass.
+Flag only defects reachable by a real caller of the changed code: logic errors, nil paths, security, API contract breaks, concurrency, resource leaks.
+Do not flag hypothetical environments (exotic env vars such as CDPATH or GIT_TRACE, control bytes in paths, tests run as root).
+Do not flag what CI enforces: golangci-lint, the Go structural quality linters (dupl, gocognit, funlen, goconst, gocritic, cyclop, wrapcheck, gosec and the rest of GO_QUALITY_LINTERS), go test with the race detector, TypeScript typecheck, eslint and prettier on .pi, markdownlint, ProB checks of the B machines.
+Do not flag lines the PR did not change.
+Never suggest adding scheduler, GitHub API, MCP, or persistence behavior; AGENTS.md reserves those for a separate design decision.
+"""
+compliance_user_guidelines = """
+Apply code rules only: correctness, typing, error handling, security, and the coding standards for the changed files.
+Do not grade PR titles, PR descriptions, commit messages, or CHANGELOG wording.
+Do not grade agent process rules from CLAUDE.md, AGENTS.md, or WORKFLOW.md (missions, beads, review cycles, delegation).
+"""
+smart_router_extra_instructions = """
+High risk: internal/circuitrun/ (runtime, session store, checks), internal/circuitrpc/ (RPC protocol and drivers), internal/circuitb/ (B-machine parser and evaluator),
+cmd/circuit/, machines/ (shipped workflow machines and their check registry), and .pi/extensions/ and .pi/lib/ (pi harness extension).
+Low risk: docs-only diffs (*.md, docs/) and test-only diffs (*_test.go, tests/).
+"""
+
+[review_agent.comments_routing]
+action_required = "both"
+remediation_recommended = "summary"
+informational = "drop"
