@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `.gitignore` ignores ethos machine-local (`.local.*`, `local/`) and runtime
+  files (mission locks, sessions, missions), matching the self-hosted remote
 - PR/FAQ revised to v2.1: z-spec named as the shipped authoring layer for
   agent-drafted machines (external FAQs state the launch path; internal
   technical risks carry today's alpha status and the z-spec adoption
