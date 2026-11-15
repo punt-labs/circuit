@@ -42,6 +42,26 @@ requests targeting `main`, through the Nix dev shell. CI executes `make check`,
 HHU release host. CI runs on x86_64 Linux because ProB does not publish a Linux
 aarch64 build.
 
+## Releases
+
+`.github/workflows/release.yml` runs when a `v*` tag is pushed. It checks that
+`VERSION` in `install.sh` matches the tag, runs the same gates as CI, builds the
+four binaries with `make dist`, writes `checksums.txt`, and publishes a GitHub
+release. A second job then runs `install.sh` from the tag in an empty `HOME` on
+Linux amd64, Linux arm64, and macOS, and checks that it installed the published
+binary for that tag.
+
+To cut a release:
+
+1. Set `VERSION` in `install.sh` to the new version and update `CHANGELOG.md`.
+2. Merge that change to `main`.
+3. Tag the merge commit `v<version>` and push the tag.
+4. Point the README Quick Start installer URL at a commit that contains the
+   released `install.sh`.
+
+The installer downloads from GitHub release assets and raw GitHub URLs, so it
+works only while the repository is public.
+
 ## Quality gate
 
 Run the full gate before committing implementation changes. `make check`
@@ -74,6 +94,11 @@ Additional targets:
 - `test` — runs all tests: Go engine, RPC protocol, and pi extension
 - `build` — alias for `build-engine`; writes `./circuit`
 - `install` — builds and copies the binary to `~/.local/bin`
+- `dist` — cross-compiles release binaries for macOS and Linux (amd64 and
+  arm64) into `dist/`
+- `lint-install` — runs shellcheck on `install.sh`
+- `test-install` — runs `install.sh` against the local build in a scratch
+  `HOME` (part of `check`)
 - `docs` — alias for `check-docs`
 - `docs-pdf` — rebuilds `prfaq.pdf` from `prfaq.tex` (needs `latexmk`)
 - `clean-latex` — removes LaTeX build intermediates

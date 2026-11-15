@@ -17,12 +17,12 @@ GOBIN := $(shell go env GOPATH)/bin
 endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
-.PHONY: help check check-engine check-go-quality check-go-all check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi smoke-drive lint lint-engine lint-pi-extension docs docs-pdf clean-latex test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install clean tools coverage
+.PHONY: help check check-engine check-go-quality check-go-all check-pi-extension check-docs check-machines check-rpc check-specs check-runtime-spec model-check-runtime-spec smoke-pi smoke-drive lint lint-engine lint-pi-extension docs docs-pdf clean-latex test test-engine test-pi-extension test-rpc typecheck-pi-extension format-check-pi-extension format build build-engine install dist lint-install test-install clean tools coverage
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
 
-check: format check-engine check-rpc check-pi-extension check-docs ## Run all quality gates
+check: format check-engine check-rpc check-pi-extension check-docs lint-install test-install ## Run all quality gates
 
 check-engine: lint-engine test-engine ## Validate Go engine
 
@@ -88,6 +88,20 @@ build-engine: ## Build circuit binary
 format: ## Format Go and TypeScript code
 	$(GOLANGCI_LINT) fmt
 	cd .pi && npx prettier --write --ignore-path .prettierignore "**/*.ts" "**/*.json" "**/*.mjs"
+
+dist: ## Cross-compile release binaries into dist/
+	rm -rf dist
+	mkdir -p dist
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w $(LDFLAGS)" -o dist/circuit-darwin-arm64 ./cmd/circuit/
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w $(LDFLAGS)" -o dist/circuit-darwin-amd64 ./cmd/circuit/
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w $(LDFLAGS)" -o dist/circuit-linux-arm64 ./cmd/circuit/
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w $(LDFLAGS)" -o dist/circuit-linux-amd64 ./cmd/circuit/
+
+lint-install: ## Shellcheck install.sh
+	shellcheck --shell=sh install.sh
+
+test-install: build ## Run install.sh against the local build in a scratch HOME
+	sh tests/install_test.sh
 
 install: build ## Build and install to ~/.local/bin
 	mkdir -p $(HOME)/.local/bin

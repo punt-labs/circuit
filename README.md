@@ -153,6 +153,7 @@ checks:
 | `circuit stop [session]` | Stop a session; name the session when more than one is active |
 | `circuit unload <session>` | Remove a stopped session |
 | `circuit drive <machine> [--task <goal>]` | Run a machine from start to finish with pi as the agent (see [Driving pi](#driving-pi)) |
+| `circuit version` | Print the installed version |
 | `circuit help` | Print the command list |
 
 A session is one running instance of a machine. Its ID is the machine name plus

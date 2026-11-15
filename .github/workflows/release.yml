@@ -1,0 +1,99 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: DeterminateSystems/nix-installer-action@ab6bcb2d5af0e904d04aea750e2089e9dc4cbfdd # v13
+
+      - uses: DeterminateSystems/magic-nix-cache-action@b46e247b898aa56e6d2d2e728dc6df6c84fdb738 # v7
+
+      # install.sh downloads the release named by its VERSION, so a tag that
+      # disagrees with it would publish binaries the installer never fetches.
+      - name: check install.sh version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pinned="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' install.sh)"
+          if [ "$pinned" != "$tag" ]; then
+            echo "::error::install.sh VERSION is '$pinned' but the tag is '$tag'"
+            exit 1
+          fi
+
+      - name: install go tools
+        run: nix develop --command make tools
+
+      - name: install pi extension deps
+        run: nix develop --command npm --prefix .pi ci --no-audit --no-fund
+
+      - name: check
+        run: nix develop --command make check
+
+      - name: check-go-quality
+        run: nix develop --command make check-go-quality
+
+      - name: check-machines
+        run: nix develop --command make check-machines
+
+      - name: build binaries
+        run: nix develop --command make dist VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: validate binaries
+        run: |
+          expected=4
+          actual=$(find dist -name 'circuit-*' -type f | wc -l | tr -d ' ')
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::Expected $expected binaries, found $actual"
+            ls -la dist/
+            exit 1
+          fi
+          ls dist/circuit-*
+          test "$(./dist/circuit-linux-amd64 version)" = "circuit ${GITHUB_REF_NAME#v}"
+
+      - name: generate checksums
+        working-directory: dist
+        run: sha256sum circuit-* > checksums.txt
+
+      - name: create release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/circuit-*
+            dist/checksums.txt
+
+  verify-install:
+    name: verify install (${{ matrix.os }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Run the tagged installer the way a user does, in an empty HOME, and
+      # check that it installed the published binary for this tag.
+      - name: install from the published release
+        run: |
+          scratch="$(mktemp -d)"
+          HOME="$scratch" sh install.sh < /dev/null | tee "$scratch/install.log"
+          grep -q "SHA-256 verified" "$scratch/install.log"
+          test "$("$scratch/.local/bin/circuit" version)" = "circuit ${GITHUB_REF_NAME#v}"

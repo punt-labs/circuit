@@ -144,6 +144,14 @@ packages are thin adapters over the core runtime.
 
 Run `make coverage` to see all tier summaries.
 
+## Installer test
+
+`make test-install` (part of `make check`) runs `tests/install_test.sh`. It
+installs the local build through `install.sh` with `CIRCUIT_LOCAL_BINARY` into
+a scratch `HOME`, checks that `circuit version` works, runs the installer a
+second time, and checks that bad input fails. The release workflow tests the
+download path against the published release.
+
 ## Continuous integration
 
 GitHub Actions runs the project through the Nix dev shell for pushes to `main`
