@@ -41,6 +41,24 @@ spike.
 
 ## Motivation
 
+Punt Labs agent workflows are loops, not straight-line scripts. A pull request
+watcher, for example, repeatedly observes GitHub state and branches based on
+what it sees:
+
+- CI failed or review findings appeared -> fix
+- checks are green and review is clean -> merge
+- nothing actionable yet -> wait and poll again
+
+These loops are often retyped as prompts. Circuit aims to make them reviewed,
+versioned, executable contracts: named states, explicit facts, legal
+operations, terminal states, and mechanically checked progress rules. The
+central invariant is:
+
+```text
+A harness may request progress, but the machine decides whether progress is
+valid.
+```
+
 Circuit is not just a configuration format for workflows. It is intended to
 constrain an agent harness to a valid state-machine path:
 
@@ -704,6 +722,10 @@ and document that release validation requires it.
    strategies, or keep refinements development-only?
 
 ## Recommendation
+
+Keep the runtime tiny and boring. Put the mathematical precision in the B
+machine, prove it during development, and make harness adapters obey it at
+runtime.
 
 Proceed with a narrow Circuit-B parser and evaluator in Go.
 
