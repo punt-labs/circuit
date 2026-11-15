@@ -32,7 +32,7 @@ if HOME="$SCRATCH/home" CIRCUIT_LOCAL_BINARY="$SCRATCH/broken" sh "$ROOT/install
 fi
 "$SCRATCH/home/.local/bin/circuit" version | grep -q '^circuit ' || fail "broken binary replaced the installed one"
 for leftover in "$SCRATCH"/home/.local/bin/circuit.tmp.*; do
-  [ -e "$leftover" ] && fail "install.sh left a temp file behind: $leftover"
+  if [ -e "$leftover" ]; then fail "install.sh left a temp file behind: $leftover"; fi
 done
 
 set +e
