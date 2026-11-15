@@ -1,80 +1,172 @@
 # circuit
 
+> A small formal state-machine engine for agent workflow loops.
+
+[![License](https://img.shields.io/github/license/punt-labs/circuit)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/punt-labs/circuit/check.yml?label=CI)](https://github.com/punt-labs/circuit/actions/workflows/check.yml)
 [![Working Backwards](https://img.shields.io/badge/Working_Backwards-hypothesis-lightgrey)](./prfaq.pdf)
 
-A tiny formal state-machine engine for agent workflow loops.
+`circuit` runs workflow state machines that say which steps are allowed next
+and refuse a step whose conditions are not met. It is for people who run coding
+agents in the pi coding agent and want a workflow, such as test-driven
+development or a pull request review loop, enforced by a checked model instead
+of a long prompt. Each workflow is a [B-Method](https://en.wikipedia.org/wiki/B-Method)
+abstract machine (a `.mch` file); the machines are model-checked with
+[ProB](https://prob.hhu.de/) during development, and a Go binary runs them
+without ProB. The project is at hypothesis stage: the repository is private and
+has no releases or packaged installer.
 
-`circuit` is a small real project for testing whether agent harnesses such as
-**pi**, **Claude Code**, and **opencode** can be guided by an explicit workflow
-machine instead of a long prompt. The harness should know the current state,
-which operations are valid from that state, and which facts must hold before the
-workflow can progress.
+**Platforms:** macOS, Linux
 
-Shipped workflow machines are authored as
-[B-Method](https://en.wikipedia.org/wiki/B-Method) abstract machines, proven or
-model-checked with ProB during development, and interpreted by Go at runtime
-without requiring ProB for normal use.
+## Quick Start
 
-Design notes: [`docs/design/b-machines.md`](docs/design/b-machines.md) and
-[`docs/spec/circuit-runtime.tex`](docs/spec/circuit-runtime.tex).
+There is no packaged installer yet, so build and install from source. You need
+read access to the private `punt-labs/circuit` repository, git, make, and Go
+(the minimum version is in `go.mod`).
 
-## Why this exists
-
-Punt Labs agent workflows are loops, not straight-line scripts. A pull request
-watcher, for example, repeatedly observes GitHub state and branches based on
-what it sees:
-
-- CI failed or review findings appeared -> fix
-- checks are green and review is clean -> merge
-- nothing actionable yet -> wait and poll again
-
-Today these loops are often retyped as prompts. `circuit` should make them
-reviewed, versioned, executable contracts: named states, typed facts, guarded
-operations, terminal states, and mechanically checked progress rules.
-
-The central invariant is:
-
-```text
-A harness may request progress, but the machine decides whether progress is
-valid.
+```bash
+git clone https://github.com/punt-labs/circuit.git
 ```
 
-## Current status
+```bash
+cd circuit
+```
 
-Implemented now:
+```bash
+make install
+```
 
-- Nix development shell with golangci-lint matching ethos conventions
-- `make check` gate for engine, RPC protocol, pi extension, and docs
-- project-local pi extension at `.pi/extensions/circuit.ts` with context
-  injection via `before_agent_start`, eight LLM tools (`circuit_list`,
-  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`, `circuit_unload`), and `/circuit` slash
-  commands for human control
-- B machines: `build-job`, `pr-watch`, `review-flow`, `retry-flow`,
-  `tdd-flow`
-- Circuit-B multi-pass parser/evaluator under `internal/circuitb/`
-- multi-session lifecycle runtime under `internal/circuitrun/` with machine-hex
-  session IDs and auto-stop on terminal states
-- RPC protocol logic under `internal/circuitrpc/` with fake-pi integration
-  test
-- CLI commands: `list`, `load`, `scaffold`, `start`, `status`, `advance`,
-  `stop`, `unload`
-- check bindings for runtime preconditions with invocation tracking; machines
-  with BOOL facts must load with complete bindings before they can start
-- `retry-flow` machine proving block/retry loops work
-- `tdd-flow` machine modeling red-green-refactor with external checks for
-  observed failing tests and passing test suites
-- ProB development gate: `make check-machines`
-- automated testing pyramid: Go ≥85%, RPC 97%, TS 100%, plus pi RPC
-  smoke test
-- first live test: agent called `circuit_status` then `circuit_advance`
-  unprompted and progressed `build-job` from `idle` to `running`
+`make install` builds the `circuit` binary and copies it to `~/.local/bin`.
+Make sure that directory is on your `PATH`.
 
-## Direction: B machines
+`circuit` reads machines from the `machines/` directory under the current
+directory, so run it from the root of the checkout:
 
-Circuit workflow definitions should be B abstract machines.
+```bash
+circuit list
+```
 
-A small machine looks like this:
+### Build Without Installing
+
+Build the binary without installing it. The binary is written to `./circuit`:
+
+```bash
+make build
+```
+
+Copy `./circuit` to any directory on your `PATH`.
+
+### Check the Install
+
+From the root of the checkout, start the `build-job` example machine:
+
+```bash
+circuit start build-job
+```
+
+The output shows `current: idle`, with `Advance(start)` enabled and
+`Advance(finish)` blocked. Request the two events in order:
+
+```bash
+circuit advance start
+```
+
+```bash
+circuit advance finish
+```
+
+The commands print `advanced: idle -> running` and then
+`advanced: running -> done`. The session stops on its own when it reaches
+`done`.
+
+## Features
+
+- **B machines as workflows** --- each workflow is a B abstract machine that
+  ProB can model-check and the Go binary can run.
+- **Enforced transitions** --- `circuit advance` applies an event only when the
+  machine's precondition holds; otherwise it prints `blocked:` and each failing
+  condition, and the state does not change.
+- **External checks** --- a machine's boolean variables can be bound to shell
+  commands; `circuit` runs each command when an event is requested and uses its
+  exit status as the value.
+- **Multiple sessions** --- several machines can run at once, each with its own
+  session ID.
+- **Automatic stop** --- a session stops when it reaches a state with no
+  enabled events.
+- **JSON output** --- `--json` on `load`, `scaffold`, `start`, `status`,
+  `advance`, `stop` and `unload`.
+- **pi extension** --- `/circuit` commands and `circuit_*` tools inside pi, with
+  the state of each active session added to the agent's context on every turn.
+- **Agent-driven runs** --- `circuit drive` runs a machine from start to finish
+  with pi as the agent and advances only on events the machine accepts.
+
+## What It Looks Like
+
+A session of the `build-job` machine, including a blocked request:
+
+```text
+$ circuit start build-job
+started: build-job
+session: build-job-4156
+session: build-job-4156
+session-state: active
+machine: build-job
+current: idle
+enabled:
+  Advance(start)
+blocked:
+  Advance(finish)
+$ circuit advance finish
+blocked: Advance(finish)
+  needs: evt = start
+$ circuit advance start
+advanced: idle -> running
+$ circuit advance finish
+advanced: running -> done
+```
+
+A machine with an external check. The `retry-flow` check fails on its first
+run and passes on its second:
+
+```text
+$ circuit advance proceed
+blocked: Advance(proceed)
+  needs: gateOpen = TRUE
+checks:
+  gateOpen: FALSE (invocations: 1)
+$ circuit advance proceed
+advanced: waiting -> done
+checks:
+  gateOpen: TRUE (invocations: 2)
+```
+
+## Commands
+
+| Command | What it does |
+|---------|-------------|
+| `circuit list` | List the machines in `machines/` |
+| `circuit load <machine>` | Check that a machine and its check bindings are valid, without starting a session |
+| `circuit scaffold <machine>` | Add missing check bindings, with registry entries that always return false |
+| `circuit start <machine>` | Start a new session and print its status |
+| `circuit status [session]` | Show every known session, or one session: current state, enabled and blocked events, and check results |
+| `circuit advance <event> [session]` | Request an event; name the session when more than one is active |
+| `circuit stop [session]` | Stop a session; name the session when more than one is active |
+| `circuit unload <session>` | Remove a stopped session |
+| `circuit drive <machine> [--task <goal>]` | Run a machine from start to finish with pi as the agent (see [Driving pi](#driving-pi)) |
+| `circuit help` | Print the command list |
+
+A session is one running instance of a machine. Its ID is the machine name plus
+four hex digits, such as `build-job-a3f8`. Session state is saved as JSON under
+`.tmp/sessions/` in the directory where you run `circuit`.
+
+## Setup
+
+### Writing a Machine
+
+Add a `<name>.mch` file to `machines/`. `circuit` runs a restricted subset of B
+called the Circuit-B profile. A machine outside the profile fails to load with
+an error that points to the unsupported part. The smallest shipped machine is
+`machines/build-job.mch`:
 
 ```b
 MACHINE BuildJob
@@ -106,320 +198,130 @@ OPERATIONS
 END
 ```
 
-This maps directly to the workflow problem:
+How the parts of a B machine map to a workflow:
 
-| Circuit concept | B concept |
+| Workflow concept | B concept |
 | --- | --- |
 | workflow definition | `MACHINE` |
-| states and operation names | enumerated `SETS` |
+| states and event names | enumerated `SETS` |
 | current workflow position | `VARIABLES current` |
 | observed facts | additional `VARIABLES` |
 | safety constraints | `INVARIANT` |
 | starting state | `INITIALISATION` |
-| transition request | `OPERATION` |
-| guard condition | `PRE` |
+| event request | `OPERATION` |
+| condition for the event | `PRE` |
 | state update | substitution after `THEN` |
 
-Development can require ProB:
+The full profile is in [B Machines for Circuit](docs/design/b-machines.md).
 
-```bash
-make check-machines
+### Check Bindings
+
+A check binding connects a `BOOL` variable in a machine to a shell command. Two
+files in `machines/` define it:
+
+- `<machine>.checks.yaml` maps each variable to a registry entry.
+- `check-registry.yaml` defines each registry entry as a command that returns
+  `BOOL`.
+
+For example, `review-flow` binds `makeCheckPassed` to `make check`:
+
+```yaml
+# machines/review-flow.checks.yaml
+checks:
+  makeCheckPassed:
+    use: makeCheck
 ```
 
-Runtime does not require ProB:
-
-```bash
-circuit list
-circuit load review-flow
-circuit scaffold review-flow
-circuit start build-job
-circuit status
-circuit advance start
-circuit advance finish
-
-# With multiple sessions, target one explicitly:
-circuit start build-job
-circuit start review-flow
-circuit status
-circuit advance start build-job-a3f8
-circuit stop review-flow-b4c9
+```yaml
+# machines/check-registry.yaml
+checks:
+  makeCheck:
+    kind: command
+    command: make check
+    returns: BOOL
 ```
 
-The Go runtime parses and evaluates a strict Circuit-B profile. It does not try
-to interpret all B. Valid B outside the profile fails with a clear runtime
-diagnostic explaining which construct is unsupported.
-
-## Runtime model
-
-A circuit machine should answer four practical questions:
-
-1. What machine is active?
-2. What B-machine state is the active circuit in?
-3. Which operations are enabled or blocked now?
-4. If a requested operation is allowed, what is the next state?
-
-The user-facing command for this is `status`, not `state`. State is the B-machine
-variable. Status is the operational report about the active circuit. Today it
-includes the active machine, current state, enabled operations, blocked
-operations, and any check results collected during transition attempts. Later it
-should also include runtime metadata such as start time, elapsed time, accepted
-transition count, blocked transition count, and the latest accepted or blocked
-operation.
-
-Runtime preconditions that depend on the outside world are represented as B
-booleans and bound to registered checks outside B. For example,
-`review-flow.mch` requires `makeCheckPassed = TRUE` before advancing from
-`coding` to `codeReview`; `review-flow.checks.yaml` binds that B variable to the
-`makeCheck` registry entry in `check-registry.yaml`. `tdd-flow.mch` uses the
-same pattern for red-green-refactor discipline: `writeTest` requires
-`not(testSuitePassed = TRUE)` while `implement`, `reviewQuality`, and
-`keepGreen` require `testSuitePassed = TRUE`. `finish` requires a separate
-`codeQualityPassed = TRUE`, and `refactor` is available from `qualityReview`
-when code quality is not passing. Circuit-B supports `not(...)` for these
-negated gates, so no separate "failing test observed" fact is needed. A machine
-with BOOL facts must load with complete bindings before it can start. Use
-`circuit scaffold <machine>` to generate missing bindings and registry stubs;
-stubs default to `false`, so incomplete integrations block safely.
-
-Circuit manages multiple sessions. A session is one running instance of a
-machine, identified as `<machine>-<4hex>` such as `build-job-a3f8`. Each session
-has independent B state and check history. The runtime lifecycle is:
-
-- `unloaded` — no session is selected or persisted
-- `active` — machine is loaded in memory and internal workflow state is
-  progressing
-- `suspended` — machine is serialized to disk between short CLI invocations
-- `stopped` — machine reached a terminal state or was explicitly stopped
-
-Short-lived CLI commands implicitly resume and suspend:
-`suspended → active → suspended`. When a machine reaches a terminal state
-(no enabled operations), that session auto-stops without affecting other active
-sessions. `status` reports known active or stopped sessions; with no known
-session it reports "no session" instead of an error.
-
-Active sessions are stored as JSON files under `.tmp/sessions/`. The old
-`.tmp/circuit.suspended.json` path is read only for migration from the earlier
-single-session runtime.
-
-The harness adapter is responsible for UI and observation. The machine remains
-the authority for valid progress.
-
-For pi, that means two relationships are worth testing:
-
-1. **Pi hosts the engine.** A pi extension calls the Go runtime, displays the
-   current state, and exposes commands/tools to request valid operations.
-2. **Circuit drives pi.** A circuit runner owns the machine state and uses pi RPC
-   as an agent backend for observation and action.
-
-Both relationships should use the same `.mch` file and the same Go evaluator.
-
-## Circuit-B parser approach
-
-The Go implementation treats Circuit-B as a small compiler problem, not as
-string matching.
-
-Current passes:
-
-1. **Lex and parse structure.** Build a raw AST with source spans.
-2. **Resolve names and types.** Distinguish variables, sets, enum values, and
-   operation parameters.
-3. **Validate the Circuit-B profile.** Reject unsupported B constructs with
-   actionable diagnostics.
-4. **Evaluate.** Compute enabled operations and apply supported substitutions.
-
-Every token and AST node should retain source location information so that
-syntax errors, type errors, and profile violations can point back to the author
-source.
-
-## Nix-first development
-
-`circuit` is Nix-first from the start.
-
-The dev shell provides Go, Node, markdown linting, staticcheck, ProB 1.15.1,
-Beads, GitHub CLI, and shell tooling. Normal development should happen inside
-the Nix shell:
-
-```bash
-nix develop
-make check
-```
-
-Non-Nix development should remain possible for contributors who already have
-the required tools installed.
-
-## Continuous integration
-
-GitHub Actions runs `make check`, `make check-go-quality`, and
-`make check-machines` inside the Nix dev shell for pushes to `main` and
-`feat/**`, and for pull requests targeting `main`.
-The project-local `nix/probcli.nix` derivation pins ProB 1.15.1 and its runtime
-requirements, including the Java parser.
-
-## Make targets
-
-The root Makefile is organized around product surfaces, not implementation
-languages:
-
-- `check-engine` validates the Go engine/CLI.
-- `check-pi-extension` validates the project-local pi extension.
-- `check-docs` validates Markdown documentation.
-- `check-specs` validates formal Z design specs with fuzz and ProB.
-- `check-machines` validates B machines with ProB for development/release.
-- `check` runs the automated aggregate gate.
-- `check-go-quality` runs the structural Go quality gate used by `tdd-flow`.
-
-Additional targets:
-
-- `lint` — alias for `lint-engine`
-- `test` — runs all tests: Go engine, RPC protocol, and pi extension
-- `build` — alias for `build-engine`
-- `docs` — alias for `check-docs`
-- `format` — auto-format Go and TypeScript
-- `coverage` — show coverage summary for all tiers
-- `check-runtime-spec` — type-check the Circuit runtime Z spec with z-spec
-- `model-check-runtime-spec` — model-check the Circuit runtime Z spec with ProB
-- `smoke-pi` — pi RPC smoke test (requires pi + model API key)
-- `smoke-drive` — Circuit-drives-Pi smoke test (requires pi + model API key)
-- `tools` — install development tools (golangci-lint)
-- `install` — build and install to `~/.local/bin`
-
-## Harness testbed
-
-See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for local setup,
-[`docs/HARNESS.md`](docs/HARNESS.md) for harness notes, and
-[`docs/TESTING.md`](docs/TESTING.md) for the testing pyramid.
-
-`circuit` is also our smallest cross-harness test project. We will test each
-harness according to its own idioms instead of forcing Claude Code conventions
-onto the others.
-
-### Shared instructions
-
-`AGENTS.md` is the intended harness-neutral instruction source. Claude Code may
-use `CLAUDE.md` as a small entrypoint/addendum. Pi's observed behavior in this
-repo loads the shared instructions from `AGENTS.md`.
-
-### pi
-
-Pi support currently includes a project-local TypeScript extension:
-
-```text
-.pi/extensions/circuit.ts
-```
-
-The extension shells out to the Go CLI and keeps transition logic in Go. Current
-commands:
-
-Slash commands (human control):
-
-- `/circuit list`
-- `/circuit load <machine>`
-- `/circuit scaffold <machine>`
-- `/circuit start <machine>`
-- `/circuit status [session]`
-- `/circuit advance <event> [session]`
-- `/circuit stop [session]`
-- `/circuit unload <session>`
-
-LLM tools (agent calls these directly):
-
-- `circuit_list`
-- `circuit_load`
-- `circuit_scaffold`
-- `circuit_start`
-- `circuit_status`
-- `circuit_advance`
-- `circuit_stop`
-- `circuit_unload`
-
-Full parity: anything the human can do, the agent can do. The B-backed
-Go runtime decides whether progress is valid.
-
-The other relationship — circuit as the outer runner driving `pi --mode rpc` —
-was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
-state, sent prompts, observed `agent_settled`, extracted the agent's chosen
-operation, and validated it against the machine before advancing.
-
-### Claude Code
-
-Claude Code support should stay native:
-
-- `CLAUDE.md` for Claude-specific entrypoint/addendum
-- optional `.claude/commands/` later
-- no hooks or subagents until the B-machine contract is stable
-
-### opencode
-
-Opencode support should stay native:
-
-- `AGENTS.md`
-- optional `opencode.json` once we actively test opencode
-
-## Near-term milestones
-
-### Milestone 0: scaffold
-
-Done:
-
-- README
-- Nix-first development decision
-- Go language decision
-- harness strategy
-
-### Milestone 1: toolchain gates
-
-Done:
-
-- `flake.nix`
-- `flake.lock`
-- `make check`
-- Go/staticcheck/markdownlint tooling
-- pi extension TypeScript tooling
-
-### Milestone 2: B-machine foundation
-
-Done:
-
-- `machines/build-job.mch`, `machines/pr-watch.mch`, `machines/review-flow.mch`,
-  `machines/tdd-flow.mch`
-- ProB development gate: `make check-machines`
-- multi-pass Circuit-B lexer/parser/evaluator in Go (`internal/circuitb`)
-- multi-session lifecycle runtime (`internal/circuitrun`) with auto-stop on terminal
-- CLI: `list`, `load`, `scaffold`, `start`, `status`, `advance`, `stop`,
-  `unload`
-- check bindings: `review-flow.checks.yaml`, `check-registry.yaml`, and
-  generated false stubs from `scaffold`
-- golangci-lint adopted matching ethos conventions
-- test coverage ≥85% on core packages
-
-### Milestone 3: harness spikes
-
-Done:
-
-- spike 2: pi hosts circuit — `/circuit` commands shell out to Go CLI
-- spike 3: circuit drives pi — Go runner owns B-machine state, sends prompts
-  to `pi --mode rpc`, validates agent responses against the machine
-- both relationships use the same `.mch` files and Go evaluator
-
-### Milestone 4: usefulness proof
-
-In progress:
-
-- context injection: `before_agent_start` injects current circuit state and
-  valid operations into the agent's context on every turn
-- LLM tools: full parity with slash commands — `circuit_list`,
-  `circuit_load`, `circuit_scaffold`, `circuit_start`, `circuit_status`,
-  `circuit_advance`, `circuit_stop`, `circuit_unload`
-- gating: `circuit_advance` tool enforces B-machine preconditions; blocked
-  transitions produce agent-visible feedback with failed conditions
-- session lifecycle: `unloaded`, `active`, `suspended`, `stopped` with
-  per-session auto-stop on terminal states; no injection when no session is
-  active; multiple active sessions inject together
-- first live test: agent called `circuit_status` then `circuit_advance`
-  unprompted and progressed `build-job` from `idle` to `running`
-
-## Design principle
-
-Keep the runtime tiny and boring. Put the mathematical precision in the B
-machine, prove it during development, and make harness adapters obey it at
-runtime.
+`circuit` runs the command with `sh -c` in the directory where `circuit` runs.
+Exit status 0 means `TRUE`; any other status means `FALSE`. The command
+receives `CIRCUIT_SESSION_ID`, `CIRCUIT_MACHINE_NAME`, `CIRCUIT_MACHINE_FILE`
+and `CIRCUIT_CURRENT_STATE` in its environment.
+
+A machine with `BOOL` variables cannot start until every variable has a
+binding. `circuit scaffold <machine>` adds the missing bindings and registry
+entries. Each generated entry runs `false`, so the event it guards stays
+blocked until you replace the command.
+
+## Machines
+
+The repository ships five example machines:
+
+| Machine | States | What it models |
+|---------|--------|----------------|
+| `build-job` | `idle`, `running`, `done` | The smallest workflow; no checks |
+| `retry-flow` | `waiting`, `done` | A blocked request followed by a retry; its check (`machines/alternating-check.sh`) fails on odd runs and passes on even runs |
+| `review-flow` | `coding`, `codeReview`, `done` | Code review that may start only after `make check` passes |
+| `tdd-flow` | `spec`, `red`, `green`, `qualityReview`, `refactoring`, `done` | Test-driven development: writing a test requires a failing `make check`, implementing requires it to pass, and finishing also requires `make check-go-quality` to pass |
+| `pr-watch` | `watch`, `fixing`, `done` | Fixing a pull request: after `needsWork`, the `fixed` event is accepted only when CI checks are green and no review thread is unresolved |
+
+The `review-flow` and `tdd-flow` checks run this repository's own quality
+gates, so they need its development tools (see [Contributing](CONTRIBUTING.md)).
+The `pr-watch` checks use the GitHub CLI (`gh`) and read the pull request
+number and repository from `.tmp/circuit/<session>/pr-watch.env`, which must
+set `PR_NUMBER` and `REPO`.
+
+## pi Extension
+
+The repository includes a project-local pi extension,
+`.pi/extensions/circuit.ts`. pi loads it when you start pi in the root of the
+checkout and approve the project's resources. The extension runs
+`go run ./cmd/circuit`, so it needs Go and the source checkout; it does not use
+the installed binary.
+
+| Slash command | Tool | What it does |
+|---------------|------|--------------|
+| `/circuit list` | `circuit_list` | List machines |
+| `/circuit load <machine>` | `circuit_load` | Validate a machine and its check bindings |
+| `/circuit scaffold <machine>` | `circuit_scaffold` | Add missing check bindings and stubs |
+| `/circuit start <machine>` | `circuit_start` | Start a session |
+| `/circuit status [session]` | `circuit_status` | Show session status |
+| `/circuit advance <event> [session]` | `circuit_advance` | Request an event |
+| `/circuit stop [session]` | `circuit_stop` | Stop a session |
+| `/circuit unload <session>` | `circuit_unload` | Remove a stopped session |
+
+You type the slash commands; the agent calls the tools. Both run the same
+`circuit` command, which decides whether an event is accepted. While at least
+one session is active, the extension adds each active session's current state
+and enabled events to the agent's context at the start of every turn.
+
+## Driving pi
+
+`circuit drive <machine> --task "<goal>"` reverses the relationship: `circuit`
+runs pi as the agent. It starts a session, launches `pi --mode rpc`, and for
+each state sends the prompt from `machines/<machine>.prompts.yaml` together with
+the goal. It reads the event pi asks for, runs the machine's checks, and
+advances only if the machine accepts the event. The run ends when the session
+reaches a terminal state.
+
+- pi must be on your `PATH` and configured with a model.
+- The machine needs a prompts file. `build-job`, `tdd-flow` and `pr-watch` have
+  one.
+- pi works in the current directory and can change files there.
+- Each run writes a JSON Lines trace of prompts, responses, `git status` output
+  and transitions to `.tmp/circuit/<session>/drive.jsonl`.
+- A run drives one session.
+
+## Documentation
+
+[Design Decisions](DESIGN.md) |
+[B Machines](docs/design/b-machines.md) |
+[Runtime Specification](docs/spec/circuit-runtime.tex) |
+[Harness Notes](docs/HARNESS.md) |
+[Development](docs/DEVELOPMENT.md) |
+[Testing](docs/TESTING.md) |
+[Contributing](CONTRIBUTING.md) |
+[Changelog](CHANGELOG.md) |
+[PR/FAQ](prfaq.pdf)
+
+## License
+
+MIT

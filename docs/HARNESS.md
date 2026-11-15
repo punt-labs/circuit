@@ -152,9 +152,12 @@ accept or block the transition.
 ## Circuit drives pi
 
 The other relationship — circuit as the outer runner driving `pi --mode rpc` —
-was tested in spike 3 (`cmd/circuit-rpc-spike/`). The runner owned the B-machine
-state, sent prompts, observed `agent_settled`, extracted the agent's chosen
-operation, and validated it against the machine before advancing.
+was first tested in spike 3 (`cmd/circuit-rpc-spike/`) and now ships as
+`circuit drive <machine> [--task <goal>]` (see DESIGN.md ADR 14–16). The runner
+owns the B-machine state, sends the state prompt from
+`machines/<machine>.prompts.yaml`, waits for pi's `agent_settled` event,
+extracts the agent's chosen operation, and validates it against the machine
+before advancing. `make smoke-drive` exercises this path against a live pi.
 
 The circuit-drives-pi runner is intentionally single-session. Multi-session
 orchestration is supported in pi-hosted/CLI mode, not in this runner.

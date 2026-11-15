@@ -5,8 +5,10 @@
 ## Nix development
 
 Use the project dev shell for normal work. It provides Go, Node, Beads, GitHub
-CLI, markdown linting, and ProB 1.15.1 via the custom `nix/probcli.nix`
-derivation.
+CLI, markdown linting, staticcheck (`go-tools`), shellcheck, and ProB 1.15.1 via
+the custom `nix/probcli.nix` derivation. ProB is included only on systems where
+ProB publishes a build (macOS and x86_64 Linux). golangci-lint is not in the dev
+shell; install the pinned version with `make tools`.
 
 The required local gates are:
 
@@ -46,6 +48,41 @@ Run the full gate before committing implementation changes. `make check`
 auto-formats Go and TypeScript, then runs golangci-lint (govet + staticcheck +
 unused + gofmt), Go tests with race detection and coverage, TypeScript
 typecheck/lint/test, and markdown linting.
+
+## Make targets
+
+The root Makefile is organized around product surfaces, not implementation
+languages. `make help` lists every target.
+
+- `check` runs the automated aggregate gate (format, engine, RPC, pi
+  extension, docs).
+- `check-engine` validates the Go engine and CLI.
+- `check-rpc` validates the RPC protocol logic.
+- `check-pi-extension` validates the project-local pi extension.
+- `check-docs` validates Markdown documentation.
+- `check-go-quality` runs the structural Go quality gate used by `tdd-flow`.
+- `check-go-all` prints a wider Go linter report; it is informational, not a
+  gate.
+- `check-machines` validates B machines with ProB.
+- `check-specs` validates the formal Z design spec with z-spec and ProB.
+- `check-runtime-spec` type-checks the Circuit runtime Z spec with z-spec.
+- `model-check-runtime-spec` model-checks the Circuit runtime Z spec with ProB.
+
+Additional targets:
+
+- `lint` — alias for `lint-engine`
+- `test` — runs all tests: Go engine, RPC protocol, and pi extension
+- `build` — alias for `build-engine`; writes `./circuit`
+- `install` — builds and copies the binary to `~/.local/bin`
+- `docs` — alias for `check-docs`
+- `docs-pdf` — rebuilds `prfaq.pdf` from `prfaq.tex` (needs `latexmk`)
+- `clean-latex` — removes LaTeX build intermediates
+- `format` — auto-formats Go and TypeScript
+- `coverage` — shows coverage summary for all tiers
+- `smoke-pi` — pi RPC smoke test (requires pi and a model API key)
+- `smoke-drive` — `circuit drive` smoke test (requires pi and a model API key)
+- `tools` — installs development tools (golangci-lint)
+- `clean` — removes build artifacts
 
 ## Harness work
 
