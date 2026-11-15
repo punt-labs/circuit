@@ -103,14 +103,19 @@ cleanup() { rm -rf "$TMPDIR_WORK"; }
 trap cleanup EXIT INT TERM
 
 # Copy a file into place atomically (temp file in the target dir, then mv).
+# The copy must run "version" first, so a bad binary never replaces a
+# working installation.
 install_file() {
   TMPBIN="$(mktemp "${INSTALL_DIR}/${BINARY}.tmp.XXXXXX")"
-  if cp "$1" "$TMPBIN" && chmod 0755 "$TMPBIN"; then
-    mv "$TMPBIN" "${INSTALL_DIR}/${BINARY}"
-  else
+  if ! cp "$1" "$TMPBIN" || ! chmod 0755 "$TMPBIN"; then
     rm -f "$TMPBIN"
     fail "failed to install $1 to ${INSTALL_DIR}/${BINARY}"
   fi
+  if ! "$TMPBIN" version >/dev/null 2>&1; then
+    rm -f "$TMPBIN"
+    fail "$1 does not run 'version'; leaving ${INSTALL_DIR}/${BINARY} unchanged"
+  fi
+  mv "$TMPBIN" "${INSTALL_DIR}/${BINARY}"
 }
 
 if [ -n "${CIRCUIT_LOCAL_BINARY:-}" ]; then

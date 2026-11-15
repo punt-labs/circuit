@@ -25,6 +25,16 @@ if HOME="$SCRATCH/home2" CIRCUIT_LOCAL_BINARY="$SCRATCH/empty" sh "$ROOT/install
   fail "install.sh accepted an empty CIRCUIT_LOCAL_BINARY"
 fi
 
+# A binary that does not run must not replace the working one.
+printf '#!/bin/sh\nexit 1\n' >"$SCRATCH/broken"
+if HOME="$SCRATCH/home" CIRCUIT_LOCAL_BINARY="$SCRATCH/broken" sh "$ROOT/install.sh" >/dev/null 2>&1; then
+  fail "install.sh accepted a binary that does not run"
+fi
+"$SCRATCH/home/.local/bin/circuit" version | grep -q '^circuit ' || fail "broken binary replaced the installed one"
+for leftover in "$SCRATCH"/home/.local/bin/circuit.tmp.*; do
+  [ -e "$leftover" ] && fail "install.sh left a temp file behind: $leftover"
+done
+
 set +e
 HOME="$SCRATCH/home3" sh "$ROOT/install.sh" --bogus >/dev/null 2>&1
 status=$?
