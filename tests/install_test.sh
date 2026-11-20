@@ -1,6 +1,5 @@
 #!/bin/sh
-# Runs install.sh with CIRCUIT_LOCAL_BINARY against the local build in a
-# scratch HOME and checks the installed binary and the installer's errors.
+# Tests local installation and download failures in scratch HOMEs.
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,5 +39,53 @@ HOME="$SCRATCH/home3" sh "$ROOT/install.sh" --bogus >/dev/null 2>&1
 status=$?
 set -e
 [ "$status" -eq 2 ] || fail "unknown option exited $status, want 2"
+
+offline_bin="$SCRATCH/offline-bin"
+mkdir "$offline_bin"
+for tool in awk mkdir mktemp rm; do
+  ln -s "$(command -v "$tool")" "$offline_bin/$tool"
+done
+if command -v sha256sum >/dev/null 2>&1; then
+  ln -s "$(command -v sha256sum)" "$offline_bin/sha256sum"
+else
+  ln -s "$(command -v shasum)" "$offline_bin/shasum"
+fi
+
+cat >"$offline_bin/uname" <<'EOF'
+#!/bin/sh
+case "$1" in
+  -s) printf 'Linux\n' ;;
+  -m) printf 'x86_64\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+cat >"$offline_bin/curl" <<'EOF'
+#!/bin/sh
+[ "$CIRCUIT_TEST_DOWNLOAD" = mismatch ] || exit 22
+case "${4##*/}" in
+  circuit-linux-amd64) printf 'test binary\n' >"$3" ;;
+  checksums.txt) printf '%064d  circuit-linux-amd64\n' 0 >"$3" ;;
+  *) exit 22 ;;
+esac
+EOF
+chmod +x "$offline_bin/uname" "$offline_bin/curl"
+
+check_download_failure() {
+  scenario="$1"
+  shift
+  home="$SCRATCH/$scenario"
+  if HOME="$home" PATH="$offline_bin" CIRCUIT_LOCAL_BINARY='' CIRCUIT_TEST_DOWNLOAD="$scenario" \
+    /bin/sh "$ROOT/install.sh" >"$SCRATCH/out" 2>&1; then
+    fail "$scenario unexpectedly succeeded"
+  fi
+  for message in "$@"; do
+    grep -Fq "$message" "$SCRATCH/out" \
+      || { cat "$SCRATCH/out" >&2; fail "$scenario did not report: $message"; }
+  done
+  [ ! -e "$home/.local/bin/circuit" ] || fail "$scenario left an installed binary"
+}
+
+check_download_failure mismatch "Checksum mismatch for circuit-linux-amd64"
+check_download_failure unavailable "falling back to source build" "Go is not installed"
 
 printf 'install_test: ok\n'

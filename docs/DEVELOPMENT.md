@@ -44,12 +44,13 @@ aarch64 build.
 
 ## Releases
 
-`.github/workflows/release.yml` runs when a `v*` tag is pushed. It checks that
-`VERSION` in `install.sh` matches the tag, runs the same gates as CI, builds the
-four binaries with `make dist`, writes `checksums.txt`, and publishes a GitHub
-release. A second job then runs `install.sh` from the tag in an empty `HOME` on
-Linux amd64, Linux arm64, and macOS, and checks that it installed the published
-binary for that tag.
+`.github/workflows/release.yml` runs when a `v*` tag is pushed. It requires the
+tagged commit to be on `main` and `VERSION` in `install.sh` to match the tag.
+It then runs the same gates as CI, builds the four binaries with `make dist`,
+and stages them with `checksums.txt` as a workflow artifact. The installer
+downloads and verifies the staged binary in an empty `HOME` on Linux and macOS
+(amd64 and arm64). Only after all four checks pass does the workflow publish
+those same assets to a GitHub release.
 
 To cut a release:
 

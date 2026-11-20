@@ -95,7 +95,7 @@ case "$ARCH" in
 esac
 
 ASSET="${BINARY}-${OS}-${ARCH}"
-RELEASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
+RELEASE_URL="${CIRCUIT_RELEASE_URL:-https://github.com/${REPO}/releases/download/v${VERSION}}"
 INSTALLED=0
 
 TMPDIR_WORK="$(mktemp -d "${TMPDIR:-/tmp}/${BINARY}-install.XXXXXX")"
