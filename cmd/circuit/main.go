@@ -68,6 +68,8 @@ func (cmd command) run(args []string) error {
 		return cmd.unload(args[1:])
 	case "drive":
 		return cmd.drive(args[1:])
+	case "version":
+		return cmd.version(args[1:])
 	default:
 		cmd.printUsage()
 		return fmt.Errorf("unknown command: %s", args[0])
@@ -782,6 +784,7 @@ func (cmd command) printUsage() {
 	fmt.Fprintln(cmd.stderr, "  stop [--json] [session]     stop a circuit session")
 	fmt.Fprintln(cmd.stderr, "  unload [--json] <session>   remove a stopped circuit session")
 	fmt.Fprintln(cmd.stderr, "  drive <machine> [--task s]  run a machine end-to-end against an agent backend")
+	fmt.Fprintln(cmd.stderr, "  version [--json]            print the circuit version")
 }
 
 func (cmd command) workingDir() string {

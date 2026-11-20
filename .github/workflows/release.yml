@@ -1,0 +1,135 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: check tagged commit is on main
+        run: |
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "::error::The tagged commit is not on main"
+            exit 1
+          fi
+
+      # install.sh downloads the release named by its VERSION, so a tag that
+      # disagrees with it would publish binaries the installer never fetches.
+      - name: check install.sh version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pinned="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' install.sh)"
+          if [ "$pinned" != "$tag" ]; then
+            echo "::error::install.sh VERSION is '$pinned' but the tag is '$tag'"
+            exit 1
+          fi
+
+      - uses: DeterminateSystems/nix-installer-action@ab6bcb2d5af0e904d04aea750e2089e9dc4cbfdd # v13
+
+      - uses: DeterminateSystems/magic-nix-cache-action@b46e247b898aa56e6d2d2e728dc6df6c84fdb738 # v7
+
+      - name: install go tools
+        run: nix develop --command make tools
+
+      - name: install pi extension deps
+        run: nix develop --command npm --prefix .pi ci --no-audit --no-fund
+
+      - name: check
+        run: nix develop --command make check
+
+      - name: check-go-quality
+        run: nix develop --command make check-go-quality
+
+      - name: check-machines
+        run: nix develop --command make check-machines
+
+      - name: build binaries
+        run: nix develop --command make dist VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: validate binaries
+        run: |
+          expected=4
+          actual=$(find dist -name 'circuit-*' -type f | wc -l | tr -d ' ')
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::Expected $expected binaries, found $actual"
+            ls -la dist/
+            exit 1
+          fi
+          ls dist/circuit-*
+          test "$(./dist/circuit-linux-amd64 version)" = "circuit ${GITHUB_REF_NAME#v}"
+
+      - name: generate checksums
+        working-directory: dist
+        run: sha256sum circuit-* > checksums.txt
+
+      - name: stage release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: |
+            dist/circuit-*
+            dist/checksums.txt
+
+  verify-install:
+    name: verify install (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: install from staged release assets
+        shell: bash
+        run: |
+          scratch="$(mktemp -d)"
+          HOME="$scratch" CIRCUIT_RELEASE_URL="file://$RUNNER_TEMP/release-assets" \
+            sh install.sh < /dev/null | tee "$scratch/install.log"
+          grep -q "SHA-256 verified" "$scratch/install.log"
+          test "$("$scratch/.local/bin/circuit" version)" = "circuit ${GITHUB_REF_NAME#v}"
+
+  publish:
+    name: publish release
+    needs: verify-install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-assets
+          path: dist
+
+      - name: publish verified release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/circuit-*
+            dist/checksums.txt

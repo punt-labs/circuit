@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   hypothesis stage, with the researcher's evidence base tracked under
   `research/`; revised to v2.0 within this unreleased cycle (see Changed)
 - MIT `LICENSE`
+- `circuit version [--json]` prints the build version
+- `install.sh` installs a released binary to `~/.local/bin` after checking its
+  SHA-256 against the release `checksums.txt`, and falls back to building the
+  tagged release from source
+- Release workflow: on a `v*` tag, runs the gates, publishes binaries for macOS
+  and Linux (amd64 and arm64) with `checksums.txt`, then runs `install.sh`
+  against the published release
 - Working Backwards stage badge in `README.md`, linking to the compiled PDF
 - `make docs-pdf` and `make clean-latex` targets for rebuilding the PR/FAQ
   PDF and sweeping LaTeX intermediates
