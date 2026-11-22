@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestCLIObservability(t *testing.T) {
@@ -73,6 +75,39 @@ func TestCLIObservabilityOptOut(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCLIContinuesWhenDiagnosticRotationLockTimesOut(t *testing.T) {
+	root := testObservabilityHome(t)
+	logDir := filepath.Join(root, "logs")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := os.OpenFile(filepath.Join(logDir, "circuit.log.rotate.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	watchdog := time.AfterFunc(5*time.Second, func() { _ = lock.Close() })
+	defer watchdog.Stop()
+
+	var stdout, stderr bytes.Buffer
+	if code := runCLI([]string{"version", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("version exited with %d: %s", code, &stderr)
+	}
+	if !strings.HasPrefix(stdout.String(), "{") {
+		t.Fatalf("version did not print JSON: %q", &stdout)
+	}
+	if stderr.String() != "circuit: private diagnostics unavailable: timed out waiting for the rotation lock\n" {
+		t.Fatalf("unexpected diagnostic: %q", &stderr)
+	}
+	if _, err := os.Stat(filepath.Join(logDir, "circuit.log")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected durable log while the lock was held: %v", err)
+	}
+	assertObservabilityMode(t, filepath.Join(root, "telemetry.db"), 0o600)
 }
 
 func TestCLIReportsUnavailableDiagnosticsWithoutCheckoutFallback(t *testing.T) {

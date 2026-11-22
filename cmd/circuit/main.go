@@ -46,9 +46,12 @@ func main() {
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	handler, err := logging.New(toolName, "cli")
 	var sink slog.Handler = slog.DiscardHandler
-	if err != nil {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		fmt.Fprintln(stderr, "circuit: private diagnostics unavailable: timed out waiting for the rotation lock")
+	case err != nil:
 		fmt.Fprintln(stderr, "circuit: private diagnostics unavailable")
-	} else {
+	default:
 		sink = handler
 		defer func() {
 			if err := handler.Close(); err != nil {
