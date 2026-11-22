@@ -160,6 +160,19 @@ A session is one running instance of a machine. Its ID is the machine name plus
 four hex digits, such as `build-job-a3f8`. Session state is saved as JSON under
 `.tmp/sessions/` in the directory where you run `circuit`.
 
+### Diagnostics and telemetry
+
+Circuit writes private, rotating diagnostics to
+`~/.punt-labs/circuit/logs/circuit.log`. By default it also records the command
+name, outcome, and elapsed time in the local `~/.punt-labs/circuit/telemetry.db`
+for 90 days. Neither store records command arguments or session and machine
+content, and Circuit does not send telemetry over the network.
+
+To disable telemetry, set `PUNT_TELEMETRY=off` or `CIRCUIT_TELEMETRY=off`, or
+create `~/.punt-labs/circuit/telemetry-off`. Any of these switches stops new
+capture and pauses retention cleanup without deleting existing data or
+disabling diagnostics.
+
 ## Setup
 
 ### Writing a Machine

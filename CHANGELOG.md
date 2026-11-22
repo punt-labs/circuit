@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Private rotating Circuit CLI diagnostics and local, opt-out usage telemetry.
 - Working Backwards PR/FAQ (`prfaq.tex`, `prfaq.bib`, compiled `prfaq.pdf`) at
   hypothesis stage, with the researcher's evidence base tracked under
   `research/`; revised to v2.0 within this unreleased cycle (see Changed)

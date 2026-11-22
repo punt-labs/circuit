@@ -2,19 +2,25 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrpc"
 	"github.com/punt-labs/circuit/internal/circuitrun"
+	"github.com/punt-labs/punt-observe-go/logging"
+	"github.com/punt-labs/punt-observe-go/telemetry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,49 +36,82 @@ type command struct {
 	stderr  io.Writer
 	cwd     string
 	backend circuitrpc.AgentBackend
+	observe *observability
 }
 
 func main() {
-	cmd := command{stdout: os.Stdout, stderr: os.Stderr}
-	if err := cmd.run(os.Args[1:]); err != nil {
-		fmt.Fprintln(cmd.stderr, err)
-		os.Exit(exitUsage)
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func runCLI(args []string, stdout, stderr io.Writer) int {
+	handler, err := logging.New(toolName, "cli")
+	var sink slog.Handler = slog.DiscardHandler
+	if err != nil {
+		fmt.Fprintln(stderr, "circuit: private diagnostics unavailable")
+	} else {
+		sink = handler
+		defer func() {
+			if err := handler.Close(); err != nil {
+				fmt.Fprintln(stderr, "circuit: could not close private diagnostics")
+			}
+		}()
 	}
+	logger := slog.New(sink).With("component", "circuit.cli")
+	usage := telemetry.New(toolName, telemetry.Config{
+		Disabled:    telemetryDisabled(logger),
+		Diagnostics: logger.With("component", "circuit.telemetry"),
+	}, commandSchema())
+	defer usage.Shutdown(context.Background())
+
+	cmd := command{stdout: stdout, stderr: stderr, observe: &observability{logger: logger, usage: usage}}
+	if err := cmd.run(args); err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
+	return 0
 }
 
 func (cmd command) run(args []string) error {
-	if len(args) == 0 {
-		cmd.printUsage()
-		return errors.New("missing command")
+	action := commandAction(args)
+	started := time.Now()
+	blocked, err := cmd.dispatch(action, args)
+	if cmd.observe != nil {
+		cmd.observe.record(action, blocked, err, time.Since(started))
 	}
+	return err
+}
 
-	switch args[0] {
-	case "help", "--help", "-h":
+func (cmd command) dispatch(action actionName, args []string) (bool, error) {
+	switch action {
+	case actionMissing:
 		cmd.printUsage()
-		return nil
+		return false, errors.New("missing command")
+	case actionHelp:
+		cmd.printUsage()
+		return false, nil
 	case "list":
-		return cmd.listMachines(args[1:])
+		return false, cmd.listMachines(args[1:])
 	case "load":
-		return cmd.load(args[1:])
+		return false, cmd.load(args[1:])
 	case "scaffold":
-		return cmd.scaffold(args[1:])
+		return false, cmd.scaffold(args[1:])
 	case "start":
-		return cmd.start(args[1:])
-	case "status":
-		return cmd.status(args[1:])
-	case "advance":
+		return false, cmd.start(args[1:])
+	case actionStatus:
+		return false, cmd.status(args[1:])
+	case actionAdvance:
 		return cmd.advance(args[1:])
 	case "stop":
-		return cmd.stop(args[1:])
+		return false, cmd.stop(args[1:])
 	case "unload":
-		return cmd.unload(args[1:])
+		return false, cmd.unload(args[1:])
 	case "drive":
-		return cmd.drive(args[1:])
-	case "version":
-		return cmd.version(args[1:])
+		return false, cmd.drive(args[1:])
+	case actionVersion:
+		return false, cmd.version(args[1:])
 	default:
 		cmd.printUsage()
-		return fmt.Errorf("unknown command: %s", args[0])
+		return false, fmt.Errorf("unknown command: %s", args[0])
 	}
 }
 
@@ -214,11 +253,7 @@ func (cmd command) drive(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := trace.Close(); err != nil {
-			fmt.Fprintf(cmd.stderr, "close trace: %v\n", err)
-		}
-	}()
+	defer cmd.closeDriveTrace(trace)
 	backend = traceBackend{backend: backend, trace: trace, cwd: cmd.workingDir()}
 	guidance, err := cmd.loadGuidance(machine, task)
 	if err != nil {
@@ -274,6 +309,13 @@ type driveTrace interface {
 	Close() error
 }
 
+func (cmd command) closeDriveTrace(trace driveTrace) {
+	if err := trace.Close(); err != nil {
+		cmd.diagnostics().Warn("Could not close the drive trace")
+		fmt.Fprintln(cmd.stderr, "circuit: could not close the drive trace; it may be incomplete")
+	}
+}
+
 type traceBackend struct {
 	backend circuitrpc.AgentBackend
 	trace   io.Writer
@@ -326,7 +368,7 @@ func (cmd command) agentBackend() (circuitrpc.AgentBackend, func(), error) {
 	if cmd.backend != nil {
 		return cmd.backend, nil, nil
 	}
-	return launchPiBackend(cmd.workingDir())
+	return launchPiBackend(cmd.workingDir(), cmd.diagnostics().With("component", "circuit.pi"))
 }
 
 func parseDriveArgs(args []string) (string, string, error) {
@@ -353,7 +395,7 @@ func parseDriveArgs(args []string) (string, string, error) {
 	return machine, task, nil
 }
 
-func launchPiBackend(cwd string) (circuitrpc.AgentBackend, func(), error) {
+func launchPiBackend(cwd string, logger *slog.Logger) (circuitrpc.AgentBackend, func(), error) {
 	process := exec.Command("pi", "--mode", "rpc", "--no-session", "--approve")
 	process.Dir = cwd
 	process.Stderr = os.Stderr
@@ -369,18 +411,31 @@ func launchPiBackend(cwd string) (circuitrpc.AgentBackend, func(), error) {
 		return nil, nil, err
 	}
 	backend := circuitrpc.NewPiRPCBackend(stdin, bufio.NewReader(stdout))
-	cleanup := func() {
-		if err := stdin.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "close stdin: %v\n", err)
-		}
-		if err := process.Process.Signal(os.Interrupt); err != nil {
-			fmt.Fprintf(os.Stderr, "signal process: %v\n", err)
-		}
-		if err := process.Wait(); err != nil {
-			fmt.Fprintf(os.Stderr, "wait process: %v\n", err)
-		}
-	}
+	cleanup := func() { stopPiBackend(process, stdin, logger) }
 	return backend, cleanup, nil
+}
+
+func stopPiBackend(process *exec.Cmd, stdin io.Closer, logger *slog.Logger) {
+	if err := stdin.Close(); err != nil {
+		logger.Warn("Could not close the agent input pipe")
+	}
+	signalErr := process.Process.Signal(os.Interrupt)
+	if signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
+		logger.Warn("Could not interrupt the agent process")
+	}
+	if err := process.Wait(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			logger.Warn("Could not wait for the agent process")
+			return
+		}
+		if signalErr == nil {
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signal() == syscall.SIGINT {
+				return
+			}
+		}
+		logger.Warn("Agent process exited unexpectedly", "exit_code", exitErr.ExitCode())
+	}
 }
 
 type guidanceFile struct {
@@ -567,14 +622,14 @@ func callStatusJSONSliceFrom(calls []circuitb.CallStatus) []callStatusJSON {
 	return result
 }
 
-func (cmd command) advance(args []string) error {
+func (cmd command) advance(args []string) (bool, error) {
 	jsonMode, event, session, err := parseAdvanceArgs(args)
 	if err != nil {
-		return err
+		return false, err
 	}
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
-		return err
+		return false, err
 	}
 	var report circuitrun.AdvanceReport
 	if session != "" {
@@ -583,13 +638,13 @@ func (cmd command) advance(args []string) error {
 		report, err = runtime.Advance(event)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := runtime.Suspend(); err != nil {
-		return err
+		return false, err
 	}
 	if jsonMode {
-		return cmd.writeAdvanceJSON(report)
+		return !report.Allowed, cmd.writeAdvanceJSON(report)
 	}
 	if !report.Allowed {
 		fmt.Fprintf(cmd.stdout, "blocked: Advance(%s)\n", report.Event)
@@ -597,11 +652,11 @@ func (cmd command) advance(args []string) error {
 			fmt.Fprintf(cmd.stdout, "  needs: %s\n", failed)
 		}
 		cmd.printChecks(report.Checks)
-		return nil
+		return true, nil
 	}
 	fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", report.From, report.To)
 	cmd.printChecks(report.Checks)
-	return nil
+	return false, nil
 }
 
 func parseAdvanceArgs(args []string) (bool, string, string, error) {
