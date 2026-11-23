@@ -198,29 +198,8 @@ func (runtime *Runtime) writeSession(run *Run) error {
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
-	temp, err := os.CreateTemp(runtime.sessionsDir(), ".session-*")
-	if err != nil {
-		return fmt.Errorf("create temporary session file: %w", err)
-	}
-	defer func() {
-		_ = os.Remove(temp.Name()) //nolint:errcheck // Best-effort cleanup; the file may already have been renamed.
-	}()
-	if err := writeAndCloseSession(temp, append(content, '\n')); err != nil {
-		return fmt.Errorf("write temporary session file: %w", err)
-	}
-	if err := os.Rename(temp.Name(), runtime.sessionPath(run.SessionID)); err != nil {
-		return fmt.Errorf("replace session file: %w", err)
-	}
-	return nil
-}
-
-func writeAndCloseSession(file *os.File, content []byte) error {
-	_, err := file.Write(content)
-	if err == nil {
-		err = file.Sync()
-	}
-	if err := errors.Join(err, file.Close()); err != nil {
-		return fmt.Errorf("flush session data: %w", err)
+	if err := writeFileAtomically(runtime.sessionPath(run.SessionID), append(content, '\n')); err != nil {
+		return fmt.Errorf("write session file: %w", err)
 	}
 	return nil
 }

@@ -42,10 +42,10 @@ func (runtime *Runtime) Scaffold(machineName string) (ScaffoldReport, error) {
 			report.GeneratedRegistryIDs = append(report.GeneratedRegistryIDs, binding.Use)
 		}
 	}
-	if err := runtime.writeCheckBindings(machineName, bindings); err != nil {
+	if err := runtime.writeCheckRegistry(machineName, registry); err != nil {
 		return ScaffoldReport{}, err
 	}
-	if err := runtime.writeCheckRegistry(machineName, registry); err != nil {
+	if err := runtime.writeCheckBindings(machineName, bindings); err != nil {
 		return ScaffoldReport{}, err
 	}
 	return report, nil
