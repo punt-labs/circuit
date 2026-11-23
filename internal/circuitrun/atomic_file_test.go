@@ -82,3 +82,28 @@ func TestAtomicWriteCreatesDanglingSymlinkTarget(t *testing.T) {
 		t.Fatalf("target was not created: %q (%v)", content, err)
 	}
 }
+
+func TestAtomicWriteResolvesSymlinkBeforeParentTraversal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "actual", "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("actual", "child"), filepath.Join(dir, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "check-registry.yaml")
+	if err := os.Symlink("alias/../registry.yaml", link); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomically(link, []byte("new registry")); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "actual", "registry.yaml"))
+	if err != nil || string(content) != "new registry" {
+		t.Fatalf("target was not created after resolving alias: %q (%v)", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "registry.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("lexically cleaned path was touched: %v", err)
+	}
+}

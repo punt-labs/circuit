@@ -68,14 +68,22 @@ func atomicSymlinkTarget(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read dangling symlink: %w", err)
 	}
-	if filepath.IsAbs(target) {
-		return target, nil
+	if !filepath.IsAbs(target) {
+		linkDir, _ := filepath.Split(path)
+		target = linkDir + target
 	}
-	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	parent, name := filepath.Split(target)
+	if name == "" {
+		return "", fmt.Errorf("symlink target has no file name: %s", target)
+	}
+	if parent == "" {
+		parent = "."
+	}
+	dir, err := filepath.EvalSymlinks(parent)
 	if err != nil {
 		return "", fmt.Errorf("resolve symlink directory: %w", err)
 	}
-	return filepath.Join(dir, target), nil
+	return filepath.Join(dir, name), nil
 }
 
 func writeAndSyncFile(file *os.File, content []byte, existing os.FileInfo) error {
