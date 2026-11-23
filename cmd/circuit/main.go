@@ -77,7 +77,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 func (cmd command) run(args []string) error {
 	action := commandAction(args)
 	started := time.Now()
-	blocked, err := cmd.dispatch(action, args)
+	blocked, err := cmd.dispatchWithSessionLock(action, args)
 	if cmd.observe != nil {
 		cmd.observe.record(action, blocked, err, time.Since(started))
 	}
@@ -92,21 +92,21 @@ func (cmd command) dispatch(action actionName, args []string) (bool, error) {
 	case actionHelp:
 		cmd.printUsage()
 		return false, nil
-	case "list":
+	case actionList:
 		return false, cmd.listMachines(args[1:])
-	case "load":
+	case actionLoad:
 		return false, cmd.load(args[1:])
-	case "scaffold":
+	case actionScaffold:
 		return false, cmd.scaffold(args[1:])
-	case "start":
+	case actionStart:
 		return false, cmd.start(args[1:])
 	case actionStatus:
 		return false, cmd.status(args[1:])
 	case actionAdvance:
 		return cmd.advance(args[1:])
-	case "stop":
+	case actionStop:
 		return false, cmd.stop(args[1:])
-	case "unload":
+	case actionUnload:
 		return false, cmd.unload(args[1:])
 	case "drive":
 		return false, cmd.drive(args[1:])
@@ -271,6 +271,11 @@ func (cmd command) drive(args []string) error {
 }
 
 func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, string, driveTrace, error) {
+	lock, err := cmd.lockSessions(syscall.LOCK_SH)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	defer cmd.closeSessionLock(lock)
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return nil, "", nil, err
@@ -304,7 +309,12 @@ func (cmd command) finishDrivenSession(runtime *circuitrun.Runtime, id string) e
 		return err
 	}
 	fmt.Fprintf(cmd.stdout, "terminal: %s\n", status.Current)
-	return runtime.Suspend()
+	lock, err := cmd.lockSessions(syscall.LOCK_EX)
+	if err != nil {
+		return err
+	}
+	defer cmd.closeSessionLock(lock)
+	return runtime.PersistNewSession(id)
 }
 
 type driveTrace interface {

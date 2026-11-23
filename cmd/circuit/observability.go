@@ -17,12 +17,18 @@ const (
 	commandEvent   = "circuit.cli.command"
 	commandVersion = 1
 
-	actionHelp    = "help"
-	actionStatus  = "status"
-	actionAdvance = "advance"
-	actionVersion = "version"
-	actionMissing = "missing"
-	actionUnknown = "unknown"
+	actionHelp     = "help"
+	actionList     = "list"
+	actionLoad     = "load"
+	actionScaffold = "scaffold"
+	actionStart    = "start"
+	actionStatus   = "status"
+	actionAdvance  = "advance"
+	actionStop     = "stop"
+	actionUnload   = "unload"
+	actionVersion  = "version"
+	actionMissing  = "missing"
+	actionUnknown  = "unknown"
 )
 
 type actionName telemetry.EnumMember
@@ -36,7 +42,7 @@ const (
 )
 
 var cliActions = []telemetry.EnumMember{
-	"list", "load", "scaffold", "start", actionStatus, actionAdvance, "stop", "unload", "drive", actionVersion,
+	actionList, actionLoad, actionScaffold, actionStart, actionStatus, actionAdvance, actionStop, actionUnload, "drive", actionVersion,
 	actionHelp,
 }
 

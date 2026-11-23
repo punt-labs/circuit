@@ -34,6 +34,19 @@ func (runtime *Runtime) Suspend() error {
 	return runtime.removeLegacySuspendedRun()
 }
 
+func (runtime *Runtime) PersistNewSession(id string) error {
+	run, err := runtime.knownSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(runtime.sessionPath(id)); err == nil {
+		return fmt.Errorf("session %s already exists", id)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check new session path: %w", err)
+	}
+	return runtime.writeSession(run)
+}
+
 func (runtime *Runtime) loadLegacySuspendedRun() error {
 	content, err := os.ReadFile(runtime.suspendedPath())
 	if err != nil {
@@ -166,8 +179,29 @@ func (runtime *Runtime) writeSession(run *Run) error {
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
-	if err := os.WriteFile(runtime.sessionPath(run.SessionID), append(content, '\n'), 0o600); err != nil {
-		return fmt.Errorf("write session file: %w", err)
+	temp, err := os.CreateTemp(runtime.sessionsDir(), ".session-*")
+	if err != nil {
+		return fmt.Errorf("create temporary session file: %w", err)
+	}
+	defer func() {
+		_ = os.Remove(temp.Name()) //nolint:errcheck // Best-effort cleanup; the file may already have been renamed.
+	}()
+	if err := writeAndCloseSession(temp, append(content, '\n')); err != nil {
+		return fmt.Errorf("write temporary session file: %w", err)
+	}
+	if err := os.Rename(temp.Name(), runtime.sessionPath(run.SessionID)); err != nil {
+		return fmt.Errorf("replace session file: %w", err)
+	}
+	return nil
+}
+
+func writeAndCloseSession(file *os.File, content []byte) error {
+	_, err := file.Write(content)
+	if err == nil {
+		err = file.Sync()
+	}
+	if err := errors.Join(err, file.Close()); err != nil {
+		return fmt.Errorf("flush session data: %w", err)
 	}
 	return nil
 }
