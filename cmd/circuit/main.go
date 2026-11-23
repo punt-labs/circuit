@@ -414,19 +414,19 @@ func launchPiBackend(cwd string, logger *slog.Logger) (circuitrpc.AgentBackend, 
 		return nil, nil, err
 	}
 	backend := circuitrpc.NewPiRPCBackend(stdin, bufio.NewReader(stdout))
-	cleanup := func() { stopPiBackend(process, stdin, logger) }
+	cleanup := func() { stopPiBackend(stdin, process.Process.Signal, process.Wait, logger) }
 	return backend, cleanup, nil
 }
 
-func stopPiBackend(process *exec.Cmd, stdin io.Closer, logger *slog.Logger) {
+func stopPiBackend(stdin io.Closer, signal func(os.Signal) error, wait func() error, logger *slog.Logger) {
 	if err := stdin.Close(); err != nil {
 		logger.Warn("Could not close the agent input pipe")
 	}
-	signalErr := process.Process.Signal(os.Interrupt)
+	signalErr := signal(os.Interrupt)
 	if signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
 		logger.Warn("Could not interrupt the agent process")
 	}
-	if err := process.Wait(); err != nil {
+	if err := wait(); err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			logger.Warn("Could not wait for the agent process")
