@@ -122,10 +122,7 @@ func (cmd command) listMachines(args []string) error {
 	if len(args) != 0 {
 		return fmt.Errorf("expected no arguments, got %d", len(args))
 	}
-	runtime, err := circuitrun.Resume(cmd.workingDir())
-	if err != nil {
-		return err
-	}
+	runtime := circuitrun.New(cmd.workingDir())
 	names, err := runtime.ListMachines()
 	if err != nil {
 		return err
@@ -141,10 +138,7 @@ func (cmd command) load(args []string) error {
 	if err != nil {
 		return err
 	}
-	runtime, err := circuitrun.Resume(cmd.workingDir())
-	if err != nil {
-		return err
-	}
+	runtime := circuitrun.New(cmd.workingDir())
 	report, err := runtime.Load(machine)
 	if err != nil {
 		return err
@@ -186,10 +180,7 @@ func (cmd command) scaffold(args []string) error {
 	if err != nil {
 		return err
 	}
-	runtime, err := circuitrun.Resume(cmd.workingDir())
-	if err != nil {
-		return err
-	}
+	runtime := circuitrun.New(cmd.workingDir())
 	report, err := runtime.Scaffold(machine)
 	if err != nil {
 		return err
@@ -271,7 +262,7 @@ func (cmd command) drive(args []string) error {
 }
 
 func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, string, driveTrace, error) {
-	lock, err := cmd.lockSessions(syscall.LOCK_SH)
+	lock, err := cmd.lockSessions(syscall.LOCK_EX)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -286,7 +277,7 @@ func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, stri
 	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
 	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
-	trace, err := cmd.openDriveTrace(id)
+	trace, err := cmd.openDriveTrace(runtime, id)
 	return runtime, id, trace, err
 }
 
@@ -344,12 +335,12 @@ func (backend traceBackend) Prompt(message string) (string, error) {
 	return response, err
 }
 
-func (cmd command) openDriveTrace(sessionID string) (driveTrace, error) {
-	path := filepath.Join(cmd.workingDir(), ".tmp", "circuit", sessionID, "drive.jsonl")
+func (cmd command) openDriveTrace(runtime *circuitrun.Runtime, sessionID string) (driveTrace, error) {
+	path := runtime.DriveTracePath(sessionID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // G703: path is session-scoped under .tmp/circuit/
 		return nil, err
 	}
-	return os.Create(path) //nolint:gosec // G304: path is session-scoped trace file under .tmp/circuit/
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304: path is session-scoped trace file under .tmp/circuit/
 }
 
 func writeTrace(writer io.Writer, event map[string]any) {
@@ -640,20 +631,15 @@ func (cmd command) advance(args []string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	runtime, err := circuitrun.Resume(cmd.workingDir())
+	pending, err := cmd.prepareAdvance(session, event)
 	if err != nil {
 		return false, err
 	}
-	var report circuitrun.AdvanceReport
-	if session != "" {
-		report, err = runtime.AdvanceByID(session, event)
-	} else {
-		report, err = runtime.Advance(event)
-	}
+	report, err := pending.Execute()
 	if err != nil {
 		return false, err
 	}
-	if err := runtime.Suspend(); err != nil {
+	if err := cmd.commitAdvance(pending); err != nil {
 		return false, err
 	}
 	if jsonMode {

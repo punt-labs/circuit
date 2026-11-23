@@ -26,8 +26,12 @@ func (runtime *Runtime) SessionState() SessionState {
 	return SessionUnloaded
 }
 
+func New(root string) *Runtime {
+	return &Runtime{root: root, sessions: map[string]*Run{}, lastState: SessionUnloaded}
+}
+
 func Resume(root string) (*Runtime, error) {
-	runtime := &Runtime{root: root, sessions: map[string]*Run{}, lastState: SessionUnloaded}
+	runtime := New(root)
 	if err := runtime.loadLegacySuspendedRun(); err != nil {
 		return nil, err
 	}

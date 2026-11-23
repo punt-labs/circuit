@@ -68,6 +68,7 @@ func (runtime *Runtime) loadLegacySuspendedRun() error {
 			return err
 		}
 		run.SessionID = id
+		runtime.legacyNeedsID = true
 	}
 	if !isSafeSessionID(run.SessionID) {
 		return fmt.Errorf("unsafe legacy session id: %s", run.SessionID)
@@ -139,13 +140,31 @@ func (runtime *Runtime) newSessionID(machineName string) (string, error) {
 		if _, ok := runtime.sessions[sessionID]; ok {
 			continue
 		}
-		if _, err := os.Stat(runtime.sessionPath(sessionID)); errors.Is(err, os.ErrNotExist) {
-			return sessionID, nil
-		} else if err != nil {
+		inUse, err := runtime.sessionIDInUse(sessionID)
+		if err != nil {
 			return "", fmt.Errorf("check session path: %w", err)
+		}
+		if !inUse {
+			return sessionID, nil
 		}
 	}
 	return "", fmt.Errorf("could not allocate session id for %s", machineName)
+}
+
+func (runtime *Runtime) sessionIDInUse(id string) (bool, error) {
+	for _, path := range []string{runtime.sessionPath(id), runtime.DriveTracePath(id)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			if err != nil {
+				return false, fmt.Errorf("stat session artifact: %w", err)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (runtime *Runtime) DriveTracePath(id string) string {
+	return filepath.Join(runtime.root, ".tmp", "circuit", id, "drive.jsonl")
 }
 
 func sessionIDMachineName(machineName string) string {

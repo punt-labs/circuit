@@ -1,6 +1,7 @@
 package circuitrun
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,6 +9,33 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestPersistNewSessionDoesNotReplaceExistingSession(t *testing.T) {
+	t.Parallel()
+	runtime := New(testRoot(t))
+	id, _, err := runtime.Start("build-job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Suspend(); err != nil {
+		t.Fatal(err)
+	}
+	path := runtime.sessionPath(id)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.AdvanceByID(id, "start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.PersistNewSession(id); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("persist existing session: %v", err)
+	}
+	current, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(original, current) {
+		t.Fatalf("existing session file was not preserved: %v", err)
+	}
+}
 
 func assertSessionStatus(t *testing.T, reports []StatusReport, id string, state SessionState) {
 	t.Helper()

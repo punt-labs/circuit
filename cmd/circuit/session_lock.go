@@ -4,16 +4,19 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"slices"
 	"syscall"
 )
 
 func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bool, error) {
 	var mode int
 	switch action {
-	case actionList, actionLoad, actionScaffold:
-		mode = syscall.LOCK_SH
-	case actionStart, actionStatus, actionAdvance, actionStop, actionUnload:
+	case actionStatus:
+		mode = syscall.LOCK_EX
+		if slices.Contains(args[1:], jsonFlag) {
+			mode = syscall.LOCK_SH
+		}
+	case actionStart, actionStop, actionUnload:
 		mode = syscall.LOCK_EX
 	default:
 		return cmd.dispatch(action, args)
@@ -27,11 +30,7 @@ func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bo
 }
 
 func (cmd command) lockSessions(mode int) (*os.File, error) {
-	dir := filepath.Join(cmd.workingDir(), ".tmp")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create session lock directory: %w", err)
-	}
-	lock, err := os.OpenFile(filepath.Join(dir, "sessions.lock"), os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304: fixed lock path under the workspace
+	lock, err := os.Open(cmd.workingDir()) //nolint:gosec // G304: lock the workspace directory itself
 	if err != nil {
 		return nil, fmt.Errorf("open session lock: %w", err)
 	}
