@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 )
@@ -68,14 +69,23 @@ func TestStopPiBackend(t *testing.T) {
 					return attr
 				},
 			}))
-			stopPiBackend(piInputCloser{tc.closeErr}, func(sig os.Signal) error {
+			var calls []string
+			stopPiBackend(piInputCloser(func() error {
+				calls = append(calls, "close")
+				return tc.closeErr
+			}), func(sig os.Signal) error {
+				calls = append(calls, "signal")
 				if sig != os.Interrupt {
 					t.Fatalf("signal = %v, want %v", sig, os.Interrupt)
 				}
 				return tc.signalErr
 			}, func() error {
+				calls = append(calls, "wait")
 				return waitErr
 			}, logger)
+			if want := []string{"close", "signal", "wait"}; !slices.Equal(calls, want) {
+				t.Errorf("shutdown calls = %v, want %v", calls, want)
+			}
 			if got := logs.String(); got != tc.wantLog {
 				t.Errorf("logs = %q, want %q", got, tc.wantLog)
 			}
@@ -83,9 +93,9 @@ func TestStopPiBackend(t *testing.T) {
 	}
 }
 
-type piInputCloser struct{ err error }
+type piInputCloser func() error
 
-func (c piInputCloser) Close() error { return c.err }
+func (c piInputCloser) Close() error { return c() }
 
 func piBackendExitError(t *testing.T, outcome string) *exec.ExitError {
 	t.Helper()
