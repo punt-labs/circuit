@@ -58,16 +58,22 @@ func atomicWriteTarget(path string) (string, os.FileInfo, error) {
 
 func atomicSymlinkTarget(path string) (string, error) {
 	target, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return target, nil
+	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return target, err
+		return "", fmt.Errorf("resolve symlink: %w", err)
 	}
 	target, err = os.Readlink(path)
-	if err != nil || filepath.IsAbs(target) {
-		return target, err
+	if err != nil {
+		return "", fmt.Errorf("read dangling symlink: %w", err)
+	}
+	if filepath.IsAbs(target) {
+		return target, nil
 	}
 	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve symlink directory: %w", err)
 	}
 	return filepath.Join(dir, target), nil
 }
