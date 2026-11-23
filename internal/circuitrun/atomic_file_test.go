@@ -57,3 +57,28 @@ func TestAtomicWriteUpdatesSymlinkTarget(t *testing.T) {
 		t.Fatalf("target was not updated: %q (%v)", content, err)
 	}
 }
+
+func TestAtomicWriteCreatesDanglingSymlinkTarget(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "machines")
+	if err := os.Mkdir(subdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(subdir, "check-registry.yaml")
+	relativeTarget := filepath.Join("..", "registry.yaml")
+	if err := os.Symlink(relativeTarget, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomically(link, []byte("new registry")); err != nil {
+		t.Fatal(err)
+	}
+	destination, err := os.Readlink(link)
+	if err != nil || destination != relativeTarget {
+		t.Fatalf("symlink changed: %q (%v)", destination, err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "registry.yaml"))
+	if err != nil || string(content) != "new registry" {
+		t.Fatalf("target was not created: %q (%v)", content, err)
+	}
+}

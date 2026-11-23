@@ -44,19 +44,32 @@ func atomicWriteTarget(path string) (string, os.FileInfo, error) {
 		return "", nil, fmt.Errorf("inspect destination: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		path, err = filepath.EvalSymlinks(path)
+		target, err := atomicSymlinkTarget(path)
 		if err != nil {
 			return "", nil, fmt.Errorf("resolve destination: %w", err)
 		}
-		info, err = os.Stat(path)
-		if err != nil {
-			return "", nil, fmt.Errorf("inspect resolved destination: %w", err)
-		}
+		return atomicWriteTarget(target)
 	}
 	if !info.Mode().IsRegular() {
 		return "", nil, fmt.Errorf("destination is not a regular file: %s", path)
 	}
 	return path, info, nil
+}
+
+func atomicSymlinkTarget(path string) (string, error) {
+	target, err := filepath.EvalSymlinks(path)
+	if !errors.Is(err, os.ErrNotExist) {
+		return target, err
+	}
+	target, err = os.Readlink(path)
+	if err != nil || filepath.IsAbs(target) {
+		return target, err
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, target), nil
 }
 
 func writeAndSyncFile(file *os.File, content []byte, existing os.FileInfo) error {
