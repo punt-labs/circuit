@@ -16,7 +16,7 @@ func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bo
 		if slices.Contains(args[1:], jsonFlag) {
 			mode = syscall.LOCK_SH
 		}
-	case actionStart, actionStop, actionUnload:
+	case actionScaffold, actionStart, actionStop, actionUnload:
 		mode = syscall.LOCK_EX
 	default:
 		return cmd.dispatch(action, args)

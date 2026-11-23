@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -150,5 +151,36 @@ func TestOpenDriveTraceDoesNotOverwriteExistingTrace(t *testing.T) {
 	content, err := os.ReadFile(runtime.DriveTracePath(id))
 	if err != nil || string(content) != "original trace" {
 		t.Fatalf("original trace was not preserved: %q (%v)", content, err)
+	}
+}
+
+func TestConcurrentScaffoldPreservesRegistryEntries(t *testing.T) {
+	t.Parallel()
+	cmd := testCommand(t, &bytes.Buffer{})
+	for _, name := range []string{"check-registry.yaml", "retry-flow.checks.yaml", "review-flow.checks.yaml"} {
+		if err := os.Remove(filepath.Join(cmd.cwd, "machines", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	machines := []string{"retry-flow", "review-flow"}
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	for _, machine := range machines {
+		workers.Go(func() {
+			worker := cmd
+			worker.stdout = &bytes.Buffer{}
+			<-start
+			if err := worker.run([]string{"scaffold", machine}); err != nil {
+				t.Errorf("scaffold %s: %v", machine, err)
+			}
+		})
+	}
+	close(start)
+	workers.Wait()
+
+	for _, machine := range machines {
+		if err := cmd.run([]string{"load", machine}); err != nil {
+			t.Errorf("load %s after concurrent scaffold: %v", machine, err)
+		}
 	}
 }
