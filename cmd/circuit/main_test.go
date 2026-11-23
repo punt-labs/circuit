@@ -6,8 +6,46 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
+
+func TestConcurrentSessionCommands(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	const starts = 8
+	ready := make(chan struct{})
+	var workers sync.WaitGroup
+	for i := range 12 {
+		workers.Go(func() {
+			worker := cmd
+			worker.stdout = &bytes.Buffer{}
+			<-ready
+			args := []string{"status"}
+			if i < starts {
+				args = []string{"start", "build-job"}
+			}
+			if err := worker.run(args); err != nil {
+				t.Errorf("concurrent %s: %v", args[0], err)
+			}
+		})
+	}
+	close(ready)
+	workers.Wait()
+
+	if err := cmd.run([]string{"status", "--json"}); err != nil {
+		t.Fatalf("final status: %v", err)
+	}
+	var reports []statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatalf("decode final status: %v", err)
+	}
+	if len(reports) != starts {
+		t.Errorf("persisted %d sessions, want %d", len(reports), starts)
+	}
+}
 
 func TestUsageDocumentsJSONFlagForAllCommands(t *testing.T) {
 	t.Parallel()
@@ -939,6 +977,57 @@ func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
 			t.Fatalf("prompt 0 missing %q:\n%s", want, backend.prompts[0])
 		}
 	}
+}
+
+func TestDrivePreservesSessionStartedDuringAgentTurn(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	agent := &stubBackend{responses: []string{"start", "finish"}}
+	var concurrentStart bool
+	cmd.backend = promptFunc(func(prompt string) (string, error) {
+		if !concurrentStart {
+			concurrentStart = true
+			worker := cmd
+			worker.stdout = &bytes.Buffer{}
+			done := make(chan error, 1)
+			go func() { done <- worker.run([]string{"start", "build-job"}) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					return "", err
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("concurrent start blocked during agent turn")
+				return "", os.ErrDeadlineExceeded
+			}
+		}
+		return agent.Prompt(prompt)
+	})
+	if err := cmd.run([]string{"drive", "build-job"}); err != nil {
+		t.Fatalf("drive returned error: %v", err)
+	}
+	stdout.Reset()
+	if err := cmd.run([]string{"status", "--json"}); err != nil {
+		t.Fatalf("status returned error: %v", err)
+	}
+	var reports []statusJSONTest
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	states := make(map[string]string, len(reports))
+	for _, report := range reports {
+		states[report.Current] = report.SessionState
+	}
+	if len(reports) != 2 || states["idle"] != "active" || states["done"] != "stopped" {
+		t.Fatalf("want one idle and one done session, got %+v", reports)
+	}
+}
+
+type promptFunc func(string) (string, error)
+
+func (prompt promptFunc) Prompt(message string) (string, error) {
+	return prompt(message)
 }
 
 func TestSmokeDriveScriptExists(t *testing.T) {

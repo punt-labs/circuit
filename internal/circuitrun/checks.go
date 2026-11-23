@@ -119,7 +119,7 @@ func writeYAMLFile(path, label string, value any) error {
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", label, err)
 	}
-	if err := os.WriteFile(path, content, 0o600); err != nil { //nolint:gosec // G306: 0o600 is intentionally restrictive
+	if err := writeFileAtomically(path, content); err != nil {
 		return fmt.Errorf("write %s %s: %w", label, path, err)
 	}
 	return nil

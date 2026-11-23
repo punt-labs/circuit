@@ -34,6 +34,19 @@ func (runtime *Runtime) Suspend() error {
 	return runtime.removeLegacySuspendedRun()
 }
 
+func (runtime *Runtime) PersistNewSession(id string) error {
+	run, err := runtime.knownSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(runtime.sessionPath(id)); err == nil {
+		return fmt.Errorf("session %s already exists", id)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check new session path: %w", err)
+	}
+	return runtime.writeSession(run)
+}
+
 func (runtime *Runtime) loadLegacySuspendedRun() error {
 	content, err := os.ReadFile(runtime.suspendedPath())
 	if err != nil {
@@ -55,6 +68,7 @@ func (runtime *Runtime) loadLegacySuspendedRun() error {
 			return err
 		}
 		run.SessionID = id
+		runtime.legacyNeedsID = true
 	}
 	if !isSafeSessionID(run.SessionID) {
 		return fmt.Errorf("unsafe legacy session id: %s", run.SessionID)
@@ -126,13 +140,31 @@ func (runtime *Runtime) newSessionID(machineName string) (string, error) {
 		if _, ok := runtime.sessions[sessionID]; ok {
 			continue
 		}
-		if _, err := os.Stat(runtime.sessionPath(sessionID)); errors.Is(err, os.ErrNotExist) {
-			return sessionID, nil
-		} else if err != nil {
+		inUse, err := runtime.sessionIDInUse(sessionID)
+		if err != nil {
 			return "", fmt.Errorf("check session path: %w", err)
+		}
+		if !inUse {
+			return sessionID, nil
 		}
 	}
 	return "", fmt.Errorf("could not allocate session id for %s", machineName)
+}
+
+func (runtime *Runtime) sessionIDInUse(id string) (bool, error) {
+	for _, path := range []string{runtime.sessionPath(id), runtime.DriveTracePath(id)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			if err != nil {
+				return false, fmt.Errorf("stat session artifact: %w", err)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (runtime *Runtime) DriveTracePath(id string) string {
+	return filepath.Join(runtime.root, ".tmp", "circuit", id, "drive.jsonl")
 }
 
 func sessionIDMachineName(machineName string) string {
@@ -166,7 +198,7 @@ func (runtime *Runtime) writeSession(run *Run) error {
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
-	if err := os.WriteFile(runtime.sessionPath(run.SessionID), append(content, '\n'), 0o600); err != nil {
+	if err := writeFileAtomically(runtime.sessionPath(run.SessionID), append(content, '\n')); err != nil {
 		return fmt.Errorf("write session file: %w", err)
 	}
 	return nil

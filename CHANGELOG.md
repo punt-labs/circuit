@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Prevent concurrent Circuit commands in one workspace from corrupting or
+  losing session state (PL-1331).
 - Bound the wait for the diagnostic rotation lock at startup. If the lock
   stays busy, Circuit warns once and runs without file diagnostics (PL-1342).
 

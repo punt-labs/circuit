@@ -12,10 +12,11 @@ const (
 )
 
 type Runtime struct {
-	root      string
-	sessions  map[string]*Run
-	currentID string
-	lastState SessionState
+	root          string
+	sessions      map[string]*Run
+	currentID     string
+	lastState     SessionState
+	legacyNeedsID bool
 }
 
 type Run struct {

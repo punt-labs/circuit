@@ -1,13 +1,77 @@
 package circuitrun
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestPersistNewSessionDoesNotReplaceExistingSession(t *testing.T) {
+	t.Parallel()
+	runtime := New(testRoot(t))
+	id, _, err := runtime.Start("build-job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Suspend(); err != nil {
+		t.Fatal(err)
+	}
+	path := runtime.sessionPath(id)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.AdvanceByID(id, "start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.PersistNewSession(id); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("persist existing session: %v", err)
+	}
+	current, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(original, current) {
+		t.Fatalf("existing session file was not preserved: %v", err)
+	}
+}
+
+func TestScaffoldReplacesConfigurationFilesAtomically(t *testing.T) {
+	t.Parallel()
+	runtime := New(testRoot(t))
+	const machine = "retry-flow"
+	original := []byte("checks: {}\n")
+	var opened []*os.File
+	for _, path := range []string{runtime.checkBindingsPath(machine), runtime.checkRegistryPath(machine)} {
+		if err := os.WriteFile(path, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened = append(opened, file)
+		t.Cleanup(func() {
+			if err := file.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	if _, err := runtime.Scaffold(machine); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Load(machine); err != nil {
+		t.Fatalf("load scaffolded check configuration: %v", err)
+	}
+	for _, file := range opened {
+		content, err := io.ReadAll(file)
+		if err != nil || !bytes.Equal(content, original) {
+			t.Fatalf("reader of %s did not retain original data: %q (%v)", file.Name(), content, err)
+		}
+	}
+}
 
 func assertSessionStatus(t *testing.T, reports []StatusReport, id string, state SessionState) {
 	t.Helper()
