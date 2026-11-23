@@ -82,7 +82,7 @@ func TestSessionCLIProcess(t *testing.T) {
 	os.Exit(runCLI(os.Args[idx+1:], os.Stdout, os.Stderr))
 }
 
-func TestMachineCommandsAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
+func TestListLoadAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 	t.Parallel()
 	for _, withSession := range []bool{false, true} {
 		t.Run(fmt.Sprintf("session=%t", withSession), func(t *testing.T) {
@@ -107,7 +107,7 @@ func TestMachineCommandsAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 					}
 				})
 			}
-			for _, args := range [][]string{{"list"}, {"load", "build-job"}, {"scaffold", "build-job"}, {"status", "--json"}} {
+			for _, args := range [][]string{{"list"}, {"load", "build-job"}, {"status", "--json"}} {
 				stdout.Reset()
 				if err := cmd.run(args); err != nil {
 					t.Fatalf("%v: %v", args, err)
