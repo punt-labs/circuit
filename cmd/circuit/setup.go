@@ -68,11 +68,7 @@ func checkCircuitHome() doctorCheck {
 	check := doctorCheck{Name: "home", Required: true}
 	path, err := circuitpath.HomeRoot()
 	if err == nil {
-		var info os.FileInfo
-		info, err = os.Stat(filepath.Dir(filepath.Dir(path)))
-		if err == nil && !info.IsDir() {
-			err = fmt.Errorf("HOME is not a directory")
-		}
+		err = checkDirectoryOrCreatable(path)
 	}
 	if err != nil {
 		check.Detail = err.Error()
@@ -80,6 +76,31 @@ func checkCircuitHome() doctorCheck {
 	}
 	check.OK, check.Detail = true, path
 	return check
+}
+
+func checkDirectoryOrCreatable(path string) error {
+	for dir := path; ; dir = filepath.Dir(dir) {
+		info, err := os.Stat(dir)
+		if err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("%s is not a directory", dir)
+			}
+			if dir == path {
+				return nil
+			}
+			probe, err := os.MkdirTemp(dir, ".circuit-doctor-*")
+			if err != nil {
+				return err
+			}
+			return os.Remove(probe)
+		}
+		if !errors.Is(err, os.ErrNotExist) || dir == filepath.Dir(dir) {
+			return err
+		}
+		if _, linkErr := os.Lstat(dir); !errors.Is(linkErr, os.ErrNotExist) {
+			return err
+		}
+	}
 }
 
 func checkOptionalCommand(name, purpose string) doctorCheck {

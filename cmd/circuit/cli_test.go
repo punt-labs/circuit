@@ -161,6 +161,29 @@ func TestDoctorReportsRequiredAndOptionalChecks(t *testing.T) {
 	}
 }
 
+func TestDoctorChecksCircuitHome(t *testing.T) {
+	for _, blocked := range []string{".punt-labs", filepath.Join(".punt-labs", "circuit")} {
+		t.Run(blocked, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			path := filepath.Join(home, blocked)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			code := runCLI([]string{"doctor", "--json"}, &stdout, io.Discard)
+			var report doctorReport
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil || code == 0 || report.OK ||
+				len(report.Checks) < 2 || report.Checks[1].OK || !report.Checks[1].Required {
+				t.Fatalf("doctor exit %d: %s (%v)", code, &stdout, err)
+			}
+		})
+	}
+}
+
 func TestInstallCopiesRunningExecutable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
