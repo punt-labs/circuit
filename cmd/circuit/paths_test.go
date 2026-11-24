@@ -87,12 +87,18 @@ func TestResolveRepositoryAndLinkedWorktree(t *testing.T) {
 	git(t, store, "worktree", "add", "--detach", checkout)
 	path := os.Getenv("PATH")
 	t.Setenv("PATH", "")
+	if workspace, err := circuitpath.ResolveWorkspace(checkout); err == nil || workspace.StateRoot != "" {
+		t.Fatalf("resolved ambiguous linked workspace without Git: %+v, err = %v", workspace, err)
+	}
 	local := filepath.Join(store, ".punt-labs", "local", "circuit")
 	linkedLocal := filepath.Join(local, "worktrees", fmt.Sprintf("%x", sha256.Sum256([]byte(checkout))))
 	for _, c := range []struct {
 		checkout string
 		local    string
 	}{{store, local}, {checkout, linkedLocal}} {
+		if c.checkout == checkout {
+			t.Setenv("PATH", path)
+		}
 		workspace, err := circuitpath.ResolveWorkspace(c.checkout)
 		if err != nil || workspace.StateRoot != c.local || workspace.LockDir != c.checkout {
 			t.Fatalf("checkout workspace = %+v, err = %v", workspace, err)
@@ -114,7 +120,6 @@ func TestResolveRepositoryAndLinkedWorktree(t *testing.T) {
 	if err := os.WriteFile(trace, []byte("retained"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", path)
 	if err := os.Remove(filepath.Join(store, ".git", "config")); err != nil {
 		t.Fatal(err)
 	}
@@ -144,6 +149,47 @@ func TestResolveLinkedWorktreeOfBareDotGitRepository(t *testing.T) {
 	want := filepath.Join(bare, ".punt-labs", "local", "circuit", "worktrees", fmt.Sprintf("%x", sha256.Sum256([]byte(checkout))))
 	if err != nil || workspace.StateRoot != want {
 		t.Fatalf("bare linked worktree = %+v, want state %q, err = %v", workspace, want, err)
+	}
+	config := filepath.Join(bare, "config")
+	key := filepath.Base(want)
+	for _, tc := range []struct {
+		name      string
+		config    string
+		worktree  string
+		wantOwner string
+	}{
+		{name: "worktree config", config: "[core]\n\trepositoryformatversion = 1\n\tbare = false\n[extensions]\n\tworktreeConfig = true\n", worktree: "[core]\n\tbare = true\n", wantOwner: bare},
+		{name: "hex boolean", config: "[core]\n\tbare = 0x0\n", wantOwner: root},
+		{name: "continued setting", config: "[core]\n\tbare = true\n\tdescription = text\\\nbare = false\n", wantOwner: bare},
+		{name: "invalid boolean", config: "[core]\n\tbare = invalid\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(config, []byte(tc.config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if tc.worktree != "" {
+				path := filepath.Join(bare, "config.worktree")
+				if err := os.WriteFile(path, []byte(tc.worktree), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if err := os.Remove(path); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			workspace, err := circuitpath.ResolveWorkspace(checkout)
+			if tc.wantOwner == "" {
+				if err == nil || workspace.StateRoot != "" {
+					t.Fatalf("resolved linked workspace with invalid Git config: %+v, err = %v", workspace, err)
+				}
+				return
+			}
+			want := filepath.Join(tc.wantOwner, ".punt-labs", "local", "circuit", "worktrees", key)
+			if err != nil || workspace.StateRoot != want {
+				t.Fatalf("linked workspace = %+v, want state %q, err = %v", workspace, want, err)
+			}
+		})
 	}
 }
 

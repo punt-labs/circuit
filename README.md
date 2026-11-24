@@ -177,6 +177,8 @@ for the worktree key), with no trailing newline. Machine checks still run from
 the directory where you invoke Circuit. Circuit creates a private ignore file
 when writing Git workspace state, so routine Git operations do not pick it up.
 Publishing that ignore file requires a filesystem that supports hard links.
+For linked worktrees whose common Git directory is named `.git`, Circuit
+uses Git on `PATH` to distinguish bare repositories from regular checkouts.
 Moving a keyed directory changes its key; copy the old state directory to
 the new key if you need to keep those sessions.
 

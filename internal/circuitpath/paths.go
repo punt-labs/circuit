@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 )
 
@@ -118,49 +119,30 @@ func linkedWorktreeOwner(checkout string) (string, error) {
 }
 
 func gitDirectoryIsBare(gitDir string) (bool, error) {
-	path := filepath.Join(gitDir, "config")
-	contents, err := os.ReadFile(path) //nolint:gosec // G304: discovered Git metadata
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
+	cmd := exec.Command("git", "--git-dir="+gitDir, "config", "--includes", "--type=bool", "--get", "core.bare") //nolint:gosec // G204: canonical Git metadata directory
+	cmd.Dir = gitDir
+	cmd.Env = slices.DeleteFunc(cmd.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, "GIT_")
+	})
+	cmd.Env = append(cmd.Env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("read Git repository config: %w", err)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 && len(output) == 0 {
+			return false, nil
+		}
+		if len(output) != 0 {
+			return false, fmt.Errorf("determine whether %s is bare: %w: %s", gitDir, err, strings.TrimSpace(string(output)))
+		}
+		return false, fmt.Errorf("determine whether %s is bare: %w", gitDir, err)
 	}
-	var core, bare bool
-	for line := range strings.Lines(string(contents)) {
-		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
-		line = strings.TrimSpace(strings.SplitN(line, ";", 2)[0])
-		if strings.HasPrefix(line, "[") {
-			core = strings.EqualFold(line, "[core]")
-			continue
-		}
-		key, value, assigned := strings.Cut(line, "=")
-		if !core || !strings.EqualFold(strings.TrimSpace(key), "bare") {
-			continue
-		}
-		bare, err = parseGitBare(value, assigned)
-		if err != nil {
-			return false, fmt.Errorf("read core.bare in %s: %w", path, err)
-		}
-	}
-	return bare, nil
-}
-
-func parseGitBare(value string, assigned bool) (bool, error) {
-	if !assigned {
+	switch strings.TrimSpace(string(output)) {
+	case "true":
 		return true, nil
-	}
-	switch value := strings.ToLower(strings.Trim(strings.TrimSpace(value), `"`)); value {
-	case "true", "yes", "on":
-		return true, nil
-	case "", "false", "no", "off":
+	case "false":
 		return false, nil
 	default:
-		number, err := strconv.Atoi(value)
-		if err != nil {
-			return false, fmt.Errorf("invalid Git boolean %q", value)
-		}
-		return number != 0, nil
+		return false, fmt.Errorf("unexpected response from Git when checking whether %s is bare: %q", gitDir, output)
 	}
 }
 
