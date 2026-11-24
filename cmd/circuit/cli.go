@@ -143,6 +143,9 @@ func (call invocation) validate(spec commandSpec) (invocation, error) {
 	if len(call.args) < spec.min || len(call.args) > spec.max {
 		return call, fmt.Errorf("usage: circuit %s", spec.syntax())
 	}
+	if call.action == actionAdvance && strings.TrimSpace(call.args[0]) == "" {
+		return call, errors.New("session advance requires a nonempty event")
+	}
 	return call, nil
 }
 

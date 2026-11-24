@@ -61,6 +61,25 @@ func TestGlobalFlagsAtEveryPosition(t *testing.T) {
 	}
 }
 
+func TestSessionAdvanceRejectsBlankEvent(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	cmd := testCommand(t, stdout)
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
+		t.Fatal(err)
+	}
+	id := extractSessionID(t, stdout.String())
+	for _, event := range []string{"", " \t\n"} {
+		stdout.Reset()
+		err := cmd.run([]string{"session", "advance", event, id, "--json"})
+		var result map[string]string
+		if decodeErr := json.Unmarshal(stdout.Bytes(), &result); decodeErr != nil ||
+			err == nil || !strings.Contains(result["error"], "nonempty event") {
+			t.Fatalf("advance %q: output %q, error %v, decode error %v", event, stdout, err, decodeErr)
+		}
+	}
+}
+
 func TestSessionShowAndStatusJSON(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
