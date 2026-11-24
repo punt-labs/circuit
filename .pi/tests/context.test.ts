@@ -128,7 +128,8 @@ describe("formatContextInjection", () => {
 		expect(text).toContain("Current state: idle");
 		expect(text).toContain("Advance(start)");
 		expect(text).toContain("Advance(finish)");
-		expect(text).toContain("circuit_advance");
+		expect(text).toContain("circuit_session_advance");
+		expect(text).toContain("only when the transition was allowed");
 	});
 
 	it("omits sections when empty", () => {

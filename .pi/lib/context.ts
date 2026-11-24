@@ -89,8 +89,8 @@ export function formatContextInjection(status: CircuitStatus): string {
 	}
 
 	lines.push("");
-	lines.push("Use circuit_advance to request a transition. Do not claim");
-	lines.push("workflow progress without a successful circuit_advance call.");
+	lines.push("Use circuit_session_advance to request a transition.");
+	lines.push("Report workflow progress only when the transition was allowed.");
 
 	return lines.join("\n");
 }

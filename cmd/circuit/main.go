@@ -363,13 +363,17 @@ func (cmd command) agentBackend() (circuitrpc.AgentBackend, func(), error) {
 	if cmd.backend != nil {
 		return cmd.backend, nil, nil
 	}
-	return launchPiBackend(cmd.workingDir(), cmd.diagnostics().With("component", "circuit.pi"))
+	stderr := cmd.stderr
+	if cmd.quiet {
+		stderr = io.Discard
+	}
+	return launchPiBackend(cmd.workingDir(), stderr, cmd.diagnostics().With("component", "circuit.pi"))
 }
 
-func launchPiBackend(cwd string, logger *slog.Logger) (circuitrpc.AgentBackend, func(), error) {
+func launchPiBackend(cwd string, stderr io.Writer, logger *slog.Logger) (circuitrpc.AgentBackend, func(), error) {
 	process := exec.Command("pi", "--mode", "rpc", "--no-session", "--approve")
 	process.Dir = cwd
-	process.Stderr = os.Stderr
+	process.Stderr = stderr
 	stdin, err := process.StdinPipe()
 	if err != nil {
 		return nil, nil, err
