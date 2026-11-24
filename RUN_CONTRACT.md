@@ -126,7 +126,8 @@ Session-scoped paths are the standard. For `tdd-flow` and any similar workflow:
 ```
 
 Check scripts must not read global evidence paths. Multiple concurrent sessions
-must not share evidence. Circuit passes:
+must not share evidence. These paths are for caller-supplied check evidence, not
+Circuit's saved sessions or drive traces. Circuit passes:
 
 ```text
 CIRCUIT_SESSION_ID
@@ -139,10 +140,11 @@ into every check command's environment.
 
 ## Trace
 
-`circuit drive` writes:
+`circuit drive` writes this path under the
+[private state directory](README.md#session-storage):
 
 ```text
-.tmp/circuit/<session-id>/drive.jsonl
+traces/<session-id>/drive.jsonl
 ```
 
 Trace events:

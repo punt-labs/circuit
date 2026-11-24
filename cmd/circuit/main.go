@@ -336,11 +336,14 @@ func (backend traceBackend) Prompt(message string) (string, error) {
 }
 
 func (cmd command) openDriveTrace(runtime *circuitrun.Runtime, sessionID string) (driveTrace, error) {
-	path := runtime.DriveTracePath(sessionID)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // G703: path is session-scoped under .tmp/circuit/
+	path, err := runtime.PrepareDriveTrace(sessionID)
+	if err != nil {
 		return nil, err
 	}
-	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304: path is session-scoped trace file under .tmp/circuit/
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // G703: path is session-scoped in the private store
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304: path is a session-scoped trace in the private store
 }
 
 func writeTrace(writer io.Writer, event map[string]any) {

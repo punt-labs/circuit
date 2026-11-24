@@ -470,7 +470,8 @@ SessionState ::= unloaded | active | suspended | stopped
 
 - `unloaded` — no session selected or persisted.
 - `active` — session is in memory, workflow state is progressing.
-- `suspended` — session serialized under `.tmp/sessions/` between CLI calls.
+- `suspended` — session serialized under `sessions/` in the
+  [private state directory](../../README.md#session-storage) between CLI calls.
 - `stopped` — session reached a terminal state or was explicitly stopped.
 
 Short-lived CLI invocations use implicit boundaries:

@@ -10,11 +10,24 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/punt-labs/circuit/internal/circuitpath"
 )
 
+func (runtime *Runtime) resolveStateRoot() error {
+	if runtime.workspace.StateRoot == "" {
+		workspace, err := circuitpath.ResolveWorkspace(runtime.root)
+		if err != nil {
+			return fmt.Errorf("resolve session store: %w", err)
+		}
+		runtime.workspace = workspace
+	}
+	return nil
+}
+
 func (runtime *Runtime) Suspend() error {
-	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
-		return fmt.Errorf("create sessions directory: %w", err)
+	if err := runtime.resolveStateRoot(); err != nil {
+		return err
 	}
 	for _, id := range runtime.persistedSessionIDs() {
 		if _, ok := runtime.sessions[id]; !ok {
@@ -91,7 +104,7 @@ func (runtime *Runtime) loadSessions() error {
 			continue
 		}
 		path := filepath.Join(runtime.sessionsDir(), entry.Name())
-		content, err := os.ReadFile(path) //nolint:gosec // G304: path is session JSON file under .tmp/sessions/
+		content, err := os.ReadFile(path) //nolint:gosec // G304: path is a session JSON file in the private store
 		if err != nil {
 			return fmt.Errorf("read session file %s: %w", entry.Name(), err)
 		}
@@ -152,8 +165,9 @@ func (runtime *Runtime) newSessionID(machineName string) (string, error) {
 }
 
 func (runtime *Runtime) sessionIDInUse(id string) (bool, error) {
-	for _, path := range []string{runtime.sessionPath(id), runtime.DriveTracePath(id)} {
-		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+	evidence := filepath.Join(runtime.root, ".tmp", "circuit", id)
+	for _, path := range []string{runtime.sessionPath(id), runtime.driveTracePath(id), evidence} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			if err != nil {
 				return false, fmt.Errorf("stat session artifact: %w", err)
 			}
@@ -163,8 +177,21 @@ func (runtime *Runtime) sessionIDInUse(id string) (bool, error) {
 	return false, nil
 }
 
-func (runtime *Runtime) DriveTracePath(id string) string {
-	return filepath.Join(runtime.root, ".tmp", "circuit", id, "drive.jsonl")
+func (runtime *Runtime) PrepareDriveTrace(id string) (string, error) {
+	if !isSafeSessionID(id) {
+		return "", fmt.Errorf("unsafe session id: %s", id)
+	}
+	if err := runtime.resolveStateRoot(); err != nil {
+		return "", err
+	}
+	if err := runtime.workspace.PrepareState(); err != nil {
+		return "", fmt.Errorf("prepare trace store: %w", err)
+	}
+	return runtime.driveTracePath(id), nil
+}
+
+func (runtime *Runtime) driveTracePath(id string) string {
+	return filepath.Join(runtime.workspace.StateRoot, "traces", id, "drive.jsonl")
 }
 
 func sessionIDMachineName(machineName string) string {
@@ -191,6 +218,9 @@ func randomHex(bytesCount int) (string, error) {
 }
 
 func (runtime *Runtime) writeSession(run *Run) error {
+	if err := runtime.workspace.PrepareState(); err != nil {
+		return fmt.Errorf("prepare session store: %w", err)
+	}
 	if err := os.MkdirAll(runtime.sessionsDir(), 0o700); err != nil {
 		return fmt.Errorf("create sessions directory: %w", err)
 	}
@@ -209,11 +239,11 @@ func (runtime *Runtime) sessionPath(id string) string {
 }
 
 func (runtime *Runtime) sessionsDir() string {
-	return filepath.Join(runtime.root, ".tmp", "sessions")
+	return filepath.Join(runtime.workspace.StateRoot, "sessions")
 }
 
 func (runtime *Runtime) suspendedPath() string {
-	return filepath.Join(runtime.root, ".tmp", "circuit.suspended.json")
+	return filepath.Join(runtime.workspace.StateRoot, "circuit.suspended.json")
 }
 
 func (runtime *Runtime) removeLegacySuspendedRun() error {

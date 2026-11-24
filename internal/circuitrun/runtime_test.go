@@ -10,7 +10,7 @@ import (
 func TestResumeRejectsMalformedSuspendedRuntime(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	path := filepath.Join(root, ".tmp", "circuit.suspended.json")
+	path := filepath.Join(root, ".punt-labs", "local", "circuit", "circuit.suspended.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("create suspended dir: %v", err)
 	}
@@ -22,6 +22,60 @@ func TestResumeRejectsMalformedSuspendedRuntime(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("resume malformed runtime returned nil error")
+	}
+}
+
+func TestResumeLeavesOldTmpStateUntouched(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	for _, old := range []string{
+		filepath.Join(root, ".tmp", "sessions", "build-job-0000.json"),
+		filepath.Join(root, ".tmp", "circuit.suspended.json"),
+		filepath.Join(root, ".tmp", "circuit", "build-job-0000", "drive.jsonl"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(old), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(old, []byte("old data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if content, err := os.ReadFile(old); err != nil || string(content) != "old data" {
+				t.Errorf("old state %q changed: %q (%v)", old, content, err)
+			}
+		})
+	}
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := runtime.knownSessionIDs(); len(ids) != 0 {
+		t.Fatalf("loaded old sessions: %v", ids)
+	}
+	if _, _, err := runtime.Start("build-job"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Suspend(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionIDInUseIncludesCheckEvidence(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+	runtime, err := Resume(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "tdd-flow-1234"
+	if used, err := runtime.sessionIDInUse(id); err != nil || used {
+		t.Fatalf("fresh ID: used = %v, err = %v", used, err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".tmp", "circuit", id), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if used, err := runtime.sessionIDInUse(id); err != nil || !used {
+		t.Fatalf("ID with check evidence: used = %v, err = %v", used, err)
 	}
 }
 
@@ -250,8 +304,9 @@ func TestRuntimeListsMachinesAndReportsSuspendedPath(t *testing.T) {
 	if len(machines) != 4 || machines[0] != "build-job" || machines[1] != "retry-flow" || machines[2] != "review-flow" || machines[3] != "tdd-flow" {
 		t.Fatalf("machines = %v, want build-job/retry-flow/review-flow/tdd-flow", machines)
 	}
-	if runtime.SuspendedPath() != filepath.Join(root, ".tmp", "circuit.suspended.json") {
-		t.Fatalf("suspended path = %s", runtime.SuspendedPath())
+	path, err := runtime.SuspendedPath()
+	if err != nil || path != filepath.Join(root, ".punt-labs", "local", "circuit", "circuit.suspended.json") {
+		t.Fatalf("suspended path = %q, err = %v", path, err)
 	}
 }
 
@@ -525,6 +580,9 @@ func TestRuntimeAdvancesTDDFlowHappyPath(t *testing.T) {
 func testRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	machines := filepath.Join(root, "machines")
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)

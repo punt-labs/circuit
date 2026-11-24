@@ -468,7 +468,7 @@ func TestNoActiveSessionsStatusAllEmpty(t *testing.T) {
 func TestResumeRejectsMalformedSessionFile(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
-	path := filepath.Join(root, ".tmp", "sessions", "build-job-0000.json")
+	path := filepath.Join(root, ".punt-labs", "local", "circuit", "sessions", "build-job-0000.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("create sessions dir: %v", err)
 	}
@@ -618,7 +618,7 @@ func TestResumeMigratesLegacyActiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal legacy run: %v", err)
 	}
-	path := filepath.Join(root, ".tmp", "circuit.suspended.json")
+	path := filepath.Join(root, ".punt-labs", "local", "circuit", "circuit.suspended.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("create legacy dir: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestResumeIgnoresLegacyStoppedSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal legacy run: %v", err)
 	}
-	path := filepath.Join(root, ".tmp", "circuit.suspended.json")
+	path := filepath.Join(root, ".punt-labs", "local", "circuit", "circuit.suspended.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("create legacy dir: %v", err)
 	}

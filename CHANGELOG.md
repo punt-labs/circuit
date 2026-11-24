@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   losing session state (PL-1331).
 - Bound the wait for the diagnostic rotation lock at startup. If the lock
   stays busy, Circuit warns once and runs without file diagnostics (PL-1342).
+- Resolve the telemetry opt-out through Circuit's home-path resolver without
+  changing the marker location or opt-out behavior (PL-1456).
 
 ### Security
 
@@ -39,6 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Breaking:** Circuit-managed state moved from `.tmp/sessions/`,
+  `.tmp/circuit.suspended.json`, and `.tmp/circuit/<id>/drive.jsonl` to
+  `sessions/`, `circuit.suspended.json`, and `traces/<id>/drive.jsonl`
+  under `.punt-labs/local/circuit/` in Git workspaces, or
+  `~/.punt-labs/circuit/data/workspaces/<key>/` outside Git. Old files are
+  untouched; see [Session storage](README.md#session-storage) for manual
+  copy instructions. Check evidence paths did not change (PL-1457).
 - `.gitignore` ignores ethos machine-local (`.local.*`, `local/`) and runtime
   files (mission locks, sessions, missions), matching the self-hosted remote
 - PR/FAQ revised to v2.1: z-spec named as the shipped authoring layer for

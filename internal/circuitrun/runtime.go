@@ -32,6 +32,9 @@ func New(root string) *Runtime {
 
 func Resume(root string) (*Runtime, error) {
 	runtime := New(root)
+	if err := runtime.resolveStateRoot(); err != nil {
+		return nil, err
+	}
 	if err := runtime.loadLegacySuspendedRun(); err != nil {
 		return nil, err
 	}
@@ -47,6 +50,9 @@ func Resume(root string) (*Runtime, error) {
 }
 
 func (runtime *Runtime) Start(machineName string) (string, StatusReport, error) {
+	if err := runtime.resolveStateRoot(); err != nil {
+		return "", StatusReport{}, err
+	}
 	if _, err := runtime.Load(machineName); err != nil {
 		return "", StatusReport{}, err
 	}
@@ -198,8 +204,11 @@ func (runtime *Runtime) ListMachines() ([]string, error) {
 	return names, nil
 }
 
-func (runtime *Runtime) SuspendedPath() string {
-	return runtime.suspendedPath()
+func (runtime *Runtime) SuspendedPath() (string, error) {
+	if err := runtime.resolveStateRoot(); err != nil {
+		return "", err
+	}
+	return runtime.suspendedPath(), nil
 }
 
 func (runtime *Runtime) advanceRun(run *Run, event string) (AdvanceReport, error) {

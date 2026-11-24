@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,13 @@ func TestCLIObservabilityOptOut(t *testing.T) {
 				t.Fatalf("telemetry enabled with %s opt-out: %v", name, err)
 			}
 		})
+	}
+}
+
+func TestTelemetryOptOutFailsClosedOnRelativeHome(t *testing.T) {
+	t.Setenv("HOME", ".")
+	if !telemetryDisabled(slog.New(slog.DiscardHandler)) {
+		t.Fatal("telemetry enabled without an absolute home directory")
 	}
 }
 
