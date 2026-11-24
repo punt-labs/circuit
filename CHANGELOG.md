@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Clear 11 open Dependabot alerts (3 high). Go: `google.golang.org/grpc`
+  1.80.0 → 1.83.2, `go.opentelemetry.io/otel` modules 1.43.0 → 1.47.0,
+  `golang.org/x/net` 0.52.0 → 0.59.0. Pi extension (`.pi/package-lock.json`):
+  eslint 10.8.1 → 10.15.0 and typescript-eslint 8.66.0 → 8.73.0, which move
+  minimatch 10.2.6 → 11.0.9.
+
 - Clear 7 open Dependabot alerts (2 high) in the pi extension
   (`.pi/package-lock.json`): vite 8.2.1 → 8.3.5, source-map-js 1.2.1 → 1.2.2,
   vitest and `@vitest/coverage-v8` 4.1.10 → 4.1.11.
