@@ -47,6 +47,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Breaking:** Replaced the flat CLI with `circuit machine <verb>` and
+  `circuit session <verb>`, with no aliases. The Pi extension uses the same
+  command paths and noun-qualified tool names. Root `status` now summarizes
+  the workspace; use `session list` or `session show` for detail. Added
+  `doctor`, `install`, and Bash completion, with single-result JSON support
+  on all finite commands except the completion script generator (PL-1499).
 - **Breaking:** Circuit-managed state moved from `.tmp/sessions/`,
   `.tmp/circuit.suspended.json`, and `.tmp/circuit/<id>/drive.jsonl` to
   `sessions/`, `circuit.suspended.json`, and `traces/<id>/drive.jsonl`

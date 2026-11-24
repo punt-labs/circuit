@@ -184,4 +184,4 @@ esac
 
 printf '\n%b%b%s is ready!%b\n\n' "$GREEN" "$BOLD" "$BINARY" "$NC"
 printf 'circuit reads machines from ./machines in the directory where you run it.\n'
-printf 'Run "circuit help" for the command list.\n\n'
+printf 'Run "circuit --help" for the command list.\n\n'

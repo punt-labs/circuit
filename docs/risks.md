@@ -84,7 +84,7 @@ The suspend/resume model works for CLI and now supports multiple active
 sessions. Sessions persist as `sessions/<id>.json` in the
 [private state directory](../README.md#session-storage), where IDs use
 `<machine>-<4hex>`. Pi extension calls shell out to the same CLI, so a pi
-restart can discover persisted sessions through `circuit status` and
+restart can discover persisted sessions through `circuit session list` and
 context injection includes every active session.
 
 Risk: active circuits are less likely to be lost, but session files are

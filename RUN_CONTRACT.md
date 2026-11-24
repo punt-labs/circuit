@@ -140,7 +140,7 @@ into every check command's environment.
 
 ## Trace
 
-`circuit drive` writes this path under the
+`circuit session drive` writes this path under the
 [private state directory](README.md#session-storage):
 
 ```text
@@ -209,5 +209,5 @@ The Circuit core does not change.
   file in a worktree).
 - Structured/typed trace events instead of ad-hoc JSON maps.
 - Optional stricter red proof beyond `not(testSuitePassed = TRUE)`.
-- Outer Pi UX (`/circuit:tdd <slice>`) wrapping `circuit drive tdd-flow`.
+- Outer Pi UX (`/circuit:tdd <slice>`) wrapping `circuit session drive tdd-flow`.
 - More Go quality tools once the initial three prove stable.

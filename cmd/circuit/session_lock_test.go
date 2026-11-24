@@ -22,9 +22,9 @@ func TestAdvanceWithNestedCircuitCommand(t *testing.T) {
 	tests := []struct {
 		name, checkArgs, wantCurrent, wantError string
 	}{
-		{"status", "status --json", "done", ""},
-		{"text-status", "status", "done", ""},
-		{"stop", `stop "$CIRCUIT_SESSION_ID"`, "waiting", "changed during advance; retry the command"},
+		{"status", "session list --json", "done", ""},
+		{"text-status", "session list", "done", ""},
+		{"stop", `session stop "$CIRCUIT_SESSION_ID"`, "waiting", "changed during advance; retry the command"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,13 +39,13 @@ func TestAdvanceWithNestedCircuitCommand(t *testing.T) {
 			if err := os.WriteFile(registry, []byte(check), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := cmd.run([]string{"start", "retry-flow"}); err != nil {
+			if err := cmd.run([]string{"session", "start", "retry-flow"}); err != nil {
 				t.Fatal(err)
 			}
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			process := exec.CommandContext(ctx, binary, "-test.run=^TestSessionCLIProcess$", "--", "advance", "proceed")
+			process := exec.CommandContext(ctx, binary, "-test.run=^TestSessionCLIProcess$", "--", "session", "advance", "proceed")
 			process.Dir = cmd.cwd
 			process.Env = append(os.Environ(), "CIRCUIT_TEST_SESSION_CLI=1", "HOME="+t.TempDir(), "CIRCUIT_TELEMETRY=0")
 			output, err := process.CombinedOutput()
@@ -58,7 +58,7 @@ func TestAdvanceWithNestedCircuitCommand(t *testing.T) {
 
 			stdout := &bytes.Buffer{}
 			cmd.stdout = stdout
-			if err := cmd.run([]string{"status", "--json"}); err != nil {
+			if err := cmd.run([]string{"session", "list", "--json"}); err != nil {
 				t.Fatal(err)
 			}
 			var reports []statusJSONTest
@@ -93,7 +93,7 @@ func TestListLoadAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 			dirs := []string{cmd.cwd}
 			wantSessions := 0
 			if withSession {
-				if err := cmd.run([]string{"start", "build-job"}); err != nil {
+				if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 					t.Fatal(err)
 				}
 				dirs = append(dirs, stateRoot, filepath.Join(stateRoot, "sessions"))
@@ -109,7 +109,7 @@ func TestListLoadAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 					}
 				})
 			}
-			for _, args := range [][]string{{"list"}, {"load", "build-job"}, {"status", "--json"}} {
+			for _, args := range [][]string{{"machine", "list"}, {"machine", "check", "build-job"}, {"session", "list", "--json"}} {
 				stdout.Reset()
 				if err := cmd.run(args); err != nil {
 					t.Fatalf("%v: %v", args, err)
@@ -172,7 +172,7 @@ func TestConcurrentScaffoldPreservesRegistryEntries(t *testing.T) {
 			worker := cmd
 			worker.stdout = &bytes.Buffer{}
 			<-start
-			if err := worker.run([]string{"scaffold", machine}); err != nil {
+			if err := worker.run([]string{"machine", "scaffold", machine}); err != nil {
 				t.Errorf("scaffold %s: %v", machine, err)
 			}
 		})
@@ -181,7 +181,7 @@ func TestConcurrentScaffoldPreservesRegistryEntries(t *testing.T) {
 	workers.Wait()
 
 	for _, machine := range machines {
-		if err := cmd.run([]string{"load", machine}); err != nil {
+		if err := cmd.run([]string{"machine", "check", machine}); err != nil {
 			t.Errorf("load %s after concurrent scaffold: %v", machine, err)
 		}
 	}

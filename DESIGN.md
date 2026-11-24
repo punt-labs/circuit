@@ -207,6 +207,9 @@ backend.
 
 ## ADR 10: LLM tools with full slash command parity
 
+The tool and slash names below are historical; ADR 20 supersedes their
+spelling and describes the current projection.
+
 **Decision:** Every slash command has a corresponding LLM tool. The
 agent can discover, load, scaffold, start, operate, stop, and unload
 circuits without human intervention.
@@ -301,14 +304,14 @@ and made machine behavior data-driven.
 - Circuit core must not hardcode per-machine prompt text.
 - Prompt files are guidance, not truth. The B machine and checks remain
   the authority for progress.
-- Missing or malformed prompt files are driver errors for `circuit drive`.
+- Missing or malformed prompt files are driver errors for `circuit session drive`.
 - Prompt files may be overridden in worktrees for experiments, but the
   driver must load them as data.
 
 ## ADR 15: Circuit drive is the enforcement path; Pi-hosted context is guidance
 
 **Decision:** The enforcement model is `outer Pi/human -> Circuit ->
-inner Pi`. `circuit drive <machine> --task <goal>` starts a machine,
+inner Pi`. `circuit session drive <machine> --task <goal>` starts a machine,
 loads machine prompts, drives `pi --mode rpc`, extracts a requested
 event from the Pi response, runs Circuit checks, and advances only if
 the machine accepts the transition.
@@ -340,7 +343,7 @@ Real `--json` slices were delivered through `tdd-flow` using this path.
 
 ## ADR 16: Driver traces are required for dogfood evaluation
 
-**Decision:** `circuit drive` writes a JSONL trace to
+**Decision:** `circuit session drive` writes a JSONL trace to
 `traces/<session-id>/drive.jsonl` in the private state directory. The trace
 records prompts, responses, workspace status after each response, and accepted
 transitions.
@@ -455,3 +458,39 @@ were included, the complete B-machine gate passed on GitHub Actions.
 - CI actions are pinned by commit SHA and use read-only repository permissions.
 - CI uses `npm ci`, not `npm install`, because `.pi/package-lock.json` is
   committed.
+
+## ADR 20: Group Circuit commands by machine and session
+
+**Decision:** Jim approved the noun–verb tree for PL-1499, following
+[Punt Labs CLI standards](https://github.com/punt-labs/punt-kit/blob/main/standards/cli.md).
+A machine is an independently addressable B workflow definition. A session
+is one independently addressable runtime instance of a machine.
+
+| Previous path | Approved path |
+|---|---|
+| `list` | `machine list` |
+| `load <machine>` | `machine check <machine>` |
+| `scaffold <machine>` | `machine scaffold <machine>` |
+| `start <machine>` | `session start <machine>` |
+| `status` (session details) | `session list` |
+| `status <session>` | `session show <session>` |
+| `advance <event> [session]` | `session advance <event> [session]` |
+| `stop [session]` | `session stop [session]` |
+| `unload <session>` | `session remove <session>` |
+| `drive <machine> [--task <goal>]` | `session drive <machine> [--task <goal>]` |
+| `version` | `version` (unchanged) |
+| `help` | `--help` or `-h` anywhere; bare root also shows help |
+
+`version`, `status`, `doctor`, `install`, and `completion bash` belong
+at the root because they address the tool as a whole: its build, workspace
+summary, installation health, machine setup, or shell integration. The
+[command reference](README.md#commands) documents each success boundary.
+The migration retains no aliases. Output flags apply across command paths;
+completion emits a Bash script instead of a JSON result.
+
+Pi exposes machine and session operations through corresponding slash commands
+and noun-prefixed LLM tools. Its human slash surface includes the workspace
+summary; its tools use the more detailed `session list` and `session show`.
+Setup, diagnostics, and completion stay on the CLI. `session drive` runs
+Pi as a child process, so it is not exposed inside Pi. Circuit has no remote
+product instance, MCP listener, or internal hook CLI.

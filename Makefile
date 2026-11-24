@@ -1,4 +1,4 @@
-VERSION := $(or $(shell git describe --tags --always 2>/dev/null | sed 's/^v//'),dev)
+VERSION := $(or $(shell git describe --tags --match 'v[0-9]*' 2>/dev/null | sed 's/^v//'),0.0.0-dev)
 LDFLAGS := -X main.version=$(VERSION)
 MARKDOWNLINT ?= markdownlint-cli2
 NPM ?= npm
@@ -104,9 +104,7 @@ test-install: build ## Run install.sh against the local build in a scratch HOME
 	sh tests/install_test.sh
 
 install: build ## Build and install to ~/.local/bin
-	mkdir -p $(HOME)/.local/bin
-	rm -f $(HOME)/.local/bin/circuit
-	cp circuit $(HOME)/.local/bin/circuit
+	./circuit install
 
 check-pi-extension: typecheck-pi-extension lint-pi-extension test-pi-extension ## Validate pi extension
 

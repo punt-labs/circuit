@@ -14,12 +14,12 @@ import threading
 import time
 
 COMMANDS = [
-    ("list", "/circuit list", "build-job"),
-    ("start", "/circuit start build-job", "started: build-job"),
-    ("status1", "/circuit status", "current: idle"),
-    ("advance1", "/circuit advance start", "advanced: idle -> running"),
-    ("status2", "/circuit status", "current: running"),
-    ("advance2", "/circuit advance finish", "advanced: running -> done"),
+    ("list", "/circuit machine list", "build-job"),
+    ("start", "/circuit session start build-job", "started: build-job"),
+    ("status1", "/circuit session list", "current: idle"),
+    ("advance1", "/circuit session advance start", "advanced: idle -> running"),
+    ("status2", "/circuit session list", "current: running"),
+    ("advance2", "/circuit session advance finish", "advanced: running -> done"),
 ]
 
 proc = subprocess.Popen(

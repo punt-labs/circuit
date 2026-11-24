@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/punt-labs/circuit/internal/circuitpath"
@@ -16,20 +16,7 @@ import (
 const (
 	toolName       = circuitpath.ToolName
 	commandEvent   = "circuit.cli.command"
-	commandVersion = 1
-
-	actionHelp     = "help"
-	actionList     = "list"
-	actionLoad     = "load"
-	actionScaffold = "scaffold"
-	actionStart    = "start"
-	actionStatus   = "status"
-	actionAdvance  = "advance"
-	actionStop     = "stop"
-	actionUnload   = "unload"
-	actionVersion  = "version"
-	actionMissing  = "missing"
-	actionUnknown  = "unknown"
+	commandVersion = 2
 )
 
 type actionName telemetry.EnumMember
@@ -41,25 +28,6 @@ const (
 	commandFailed    commandOutcome = "failed"
 	commandBlocked   commandOutcome = "blocked"
 )
-
-var cliActions = []telemetry.EnumMember{
-	actionList, actionLoad, actionScaffold, actionStart, actionStatus, actionAdvance, actionStop, actionUnload, "drive", actionVersion,
-	actionHelp,
-}
-
-func commandAction(args []string) actionName {
-	if len(args) == 0 {
-		return actionMissing
-	}
-	switch args[0] {
-	case "--help", "-h":
-		return actionHelp
-	}
-	if slices.Contains(cliActions, telemetry.EnumMember(args[0])) {
-		return actionName(args[0])
-	}
-	return actionUnknown
-}
 
 type observability struct {
 	logger *slog.Logger
@@ -79,7 +47,11 @@ func telemetryDisabled(logger *slog.Logger) bool {
 }
 
 func commandSchema() telemetry.Schema {
-	actions := append(slices.Clone(cliActions), actionMissing, actionUnknown)
+	actions := make([]telemetry.EnumMember, 0, 2+len(commandTree))
+	actions = append(actions, telemetry.EnumMember(actionHelp), telemetry.EnumMember(actionUnknown))
+	for _, spec := range commandTree {
+		actions = append(actions, commandActionMember(spec.action))
+	}
 	return telemetry.Schema{
 		Name:    commandEvent,
 		Version: commandVersion,
@@ -94,14 +66,22 @@ func commandSchema() telemetry.Schema {
 	}
 }
 
-func (o *observability) record(action actionName, blocked bool, err error, elapsed time.Duration) {
-	outcome := commandSucceeded
-	switch {
-	case err != nil:
-		outcome = commandFailed
-	case blocked:
-		outcome = commandBlocked
+func commandActionMember(action actionName) telemetry.EnumMember {
+	return telemetry.EnumMember(strings.ReplaceAll(string(action), " ", "_"))
+}
+
+func outcomeFor(blocked bool, err error) commandOutcome {
+	if err != nil {
+		return commandFailed
 	}
+	if blocked {
+		return commandBlocked
+	}
+	return commandSucceeded
+}
+
+func (o *observability) record(action actionName, blocked bool, err error, elapsed time.Duration) {
+	outcome := outcomeFor(blocked, err)
 	if errors.Is(err, fs.ErrPermission) {
 		o.logger.Warn("Command was denied filesystem access", "action", string(action))
 	}
@@ -110,7 +90,7 @@ func (o *observability) record(action actionName, blocked bool, err error, elaps
 		Name:    commandEvent,
 		Version: commandVersion,
 		Attributes: []telemetry.Value{
-			telemetry.EnumValue("action", telemetry.EnumMember(action)),
+			telemetry.EnumValue("action", commandActionMember(action)),
 			telemetry.EnumValue("outcome", telemetry.EnumMember(outcome)),
 			telemetry.Elapsed("duration_ms", elapsed),
 		},

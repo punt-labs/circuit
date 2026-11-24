@@ -29,9 +29,11 @@ uses B-Method abstract machines as the formal model for workflow definitions.
 
 ## Current useful commands
 
-- List available machines with `circuit list`.
-- Start an active circuit with `circuit start <machine>`.
-- Report active circuit status with `circuit status`.
-- Advance with `circuit advance <event>`.
+- List available machines with `circuit machine list`.
+- Start an active circuit with `circuit session start <machine>`.
+- Summarize workspace sessions with `circuit status`; use
+  `circuit session list` or `circuit session show <session>` for details.
+- Check installation health with `circuit doctor`.
+- Advance with `circuit session advance <event>`.
 - Run the full local gate with `make check`.
 - Run the B-machine development gate with `make check-machines`.

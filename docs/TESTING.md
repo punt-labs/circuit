@@ -67,8 +67,8 @@ RPC protocol logic extracted from the circuit-drives-pi spike:
 
 ## Go CLI tests
 
-CLI tests exercise the public command layer: list, start, status,
-advance, stop, help, and error paths for missing/extra arguments.
+CLI tests exercise the `machine` and `session` command trees, root
+commands, help, JSON results, and error paths for missing/extra arguments.
 
 ## TypeScript unit tests
 
@@ -126,7 +126,8 @@ make smoke-pi
 ```
 
 Requires pi binary and a model API key. Tests the full extension
-command surface: list, start, status, advance through pi RPC. Exits
+command surface: `machine list`, `session start`, `session list`, and
+`session advance` through pi RPC. Exits
 0 on success, 1 on failure.
 
 ## Coverage targets

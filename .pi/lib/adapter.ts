@@ -1,10 +1,7 @@
 import { execFile } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const MACHINE_DIR = "machines";
 
 export interface CircuitResult {
 	ok: boolean;
@@ -12,23 +9,15 @@ export interface CircuitResult {
 }
 
 export interface CircuitAdapter {
-	listMachines(): Promise<string[]>;
 	run(args: string[]): Promise<CircuitResult>;
 }
 
 export function createCliCircuitAdapter(cwd: string): CircuitAdapter {
 	return {
-		async listMachines(): Promise<string[]> {
-			const entries = await readdir(join(cwd, MACHINE_DIR));
-			return entries
-				.filter((entry) => entry.endsWith(".mch"))
-				.map((entry) => basename(entry, ".mch"))
-				.sort();
-		},
 		async run(args: string[]): Promise<CircuitResult> {
 			try {
 				const result = await execFileAsync("go", ["run", "./cmd/circuit", ...args], { cwd });
-				return { ok: true, message: result.stdout.trim() || "circuit command completed" };
+				return { ok: true, message: result.stdout.trim() };
 			} catch (error) {
 				if (isExecError(error)) {
 					return {

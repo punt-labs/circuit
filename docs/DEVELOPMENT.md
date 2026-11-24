@@ -94,7 +94,8 @@ Additional targets:
 - `lint` — alias for `lint-engine`
 - `test` — runs all tests: Go engine, RPC protocol, and pi extension
 - `build` — alias for `build-engine`; writes `./circuit`
-- `install` — builds and copies the binary to `~/.local/bin`
+- `install` — builds the binary and runs `./circuit install` to copy it to
+  `~/.local/bin`
 - `dist` — cross-compiles release binaries for macOS and Linux (amd64 and
   arm64) into `dist/`
 - `lint-install` — runs shellcheck on `install.sh`
@@ -106,7 +107,7 @@ Additional targets:
 - `format` — auto-formats Go and TypeScript
 - `coverage` — shows coverage summary for all tiers
 - `smoke-pi` — pi RPC smoke test (requires pi and a model API key)
-- `smoke-drive` — `circuit drive` smoke test (requires pi and a model API key)
+- `smoke-drive` — `circuit session drive` smoke test (requires pi and a model API key)
 - `tools` — installs development tools (golangci-lint)
 - `clean` — removes build artifacts
 
