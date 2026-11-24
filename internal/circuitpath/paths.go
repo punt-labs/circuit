@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -103,10 +104,64 @@ func linkedWorktreeOwner(checkout string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if filepath.Base(commonDir) == ".git" {
+	if filepath.Base(commonDir) != ".git" {
+		return commonDir, nil
+	}
+	bare, err := gitDirectoryIsBare(commonDir)
+	if err != nil {
+		return "", err
+	}
+	if !bare {
 		return filepath.Dir(commonDir), nil
 	}
 	return commonDir, nil
+}
+
+func gitDirectoryIsBare(gitDir string) (bool, error) {
+	path := filepath.Join(gitDir, "config")
+	contents, err := os.ReadFile(path) //nolint:gosec // G304: discovered Git metadata
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read Git repository config: %w", err)
+	}
+	var core, bare bool
+	for line := range strings.Lines(string(contents)) {
+		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
+		line = strings.TrimSpace(strings.SplitN(line, ";", 2)[0])
+		if strings.HasPrefix(line, "[") {
+			core = strings.EqualFold(line, "[core]")
+			continue
+		}
+		key, value, assigned := strings.Cut(line, "=")
+		if !core || !strings.EqualFold(strings.TrimSpace(key), "bare") {
+			continue
+		}
+		bare, err = parseGitBare(value, assigned)
+		if err != nil {
+			return false, fmt.Errorf("read core.bare in %s: %w", path, err)
+		}
+	}
+	return bare, nil
+}
+
+func parseGitBare(value string, assigned bool) (bool, error) {
+	if !assigned {
+		return true, nil
+	}
+	switch value := strings.ToLower(strings.Trim(strings.TrimSpace(value), `"`)); value {
+	case "true", "yes", "on":
+		return true, nil
+	case "", "false", "no", "off":
+		return false, nil
+	default:
+		number, err := strconv.Atoi(value)
+		if err != nil {
+			return false, fmt.Errorf("invalid Git boolean %q", value)
+		}
+		return number != 0, nil
+	}
 }
 
 func resolveGitDirectory(base, path string) (string, error) {

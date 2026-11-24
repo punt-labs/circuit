@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/punt-labs/circuit/internal/circuitpath"
@@ -114,9 +115,58 @@ func TestResolveRepositoryAndLinkedWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", path)
+	if err := os.Remove(filepath.Join(store, ".git", "config")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, checkout, "rev-parse", "--git-common-dir")
+	if workspace, err := circuitpath.ResolveWorkspace(checkout); err != nil || workspace.StateRoot != linkedLocal {
+		t.Fatalf("linked workspace without Git config = %+v, err = %v", workspace, err)
+	}
 	git(t, store, "worktree", "remove", "--force", checkout)
 	if content, err := os.ReadFile(trace); err != nil || string(content) != "retained" {
 		t.Fatalf("linked trace was not preserved: %q (%v)", content, err)
+	}
+}
+
+func TestResolveLinkedWorktreeOfBareDotGitRepository(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	git(t, source, "init", "-q")
+	git(t, source, "-c", "user.name=Circuit", "-c", "user.email=circuit@example.invalid", "commit", "--allow-empty", "-qm", "Initial commit")
+	bare := filepath.Join(root, ".git")
+	checkout := filepath.Join(root, "linked")
+	git(t, source, "clone", "--bare", source, bare)
+	git(t, bare, "worktree", "add", "--detach", checkout)
+	workspace, err := circuitpath.ResolveWorkspace(checkout)
+	want := filepath.Join(bare, ".punt-labs", "local", "circuit", "worktrees", fmt.Sprintf("%x", sha256.Sum256([]byte(checkout))))
+	if err != nil || workspace.StateRoot != want {
+		t.Fatalf("bare linked worktree = %+v, want state %q, err = %v", workspace, want, err)
+	}
+}
+
+func TestResolveCheckoutWithSeparateGitDirectory(t *testing.T) {
+	checkout, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	git(t, checkout, "init", "--separate-git-dir", filepath.Join(t.TempDir(), "metadata"))
+	workspace, err := circuitpath.ResolveWorkspace(checkout)
+	want := filepath.Join(checkout, ".punt-labs", "local", "circuit")
+	if err != nil || workspace.StateRoot != want {
+		t.Fatalf("checkout with separate Git directory = %+v, want state %q, err = %v", workspace, want, err)
+	}
+}
+
+func TestResolveWorkspaceRejectsNonregularGitMarker(t *testing.T) {
+	checkout := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(checkout, ".git"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if workspace, err := circuitpath.ResolveWorkspace(checkout); err == nil || !strings.Contains(err.Error(), "invalid Git marker") {
+		t.Fatalf("nonregular Git marker = %+v, err = %v", workspace, err)
 	}
 }
 

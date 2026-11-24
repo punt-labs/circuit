@@ -166,7 +166,7 @@ func (runtime *Runtime) newSessionID(machineName string) (string, error) {
 
 func (runtime *Runtime) sessionIDInUse(id string) (bool, error) {
 	evidence := filepath.Join(runtime.root, ".tmp", "circuit", id)
-	for _, path := range []string{runtime.sessionPath(id), runtime.driveTracePath(id), evidence} {
+	for _, path := range []string{runtime.sessionPath(id), runtime.driveTraceDir(id), evidence} {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			if err != nil {
 				return false, fmt.Errorf("stat session artifact: %w", err)
@@ -187,11 +187,11 @@ func (runtime *Runtime) PrepareDriveTrace(id string) (string, error) {
 	if err := runtime.workspace.PrepareState(); err != nil {
 		return "", fmt.Errorf("prepare trace store: %w", err)
 	}
-	return runtime.driveTracePath(id), nil
+	return filepath.Join(runtime.driveTraceDir(id), "drive.jsonl"), nil
 }
 
-func (runtime *Runtime) driveTracePath(id string) string {
-	return filepath.Join(runtime.workspace.StateRoot, "traces", id, "drive.jsonl")
+func (runtime *Runtime) driveTraceDir(id string) string {
+	return filepath.Join(runtime.workspace.StateRoot, "traces", id)
 }
 
 func sessionIDMachineName(machineName string) string {

@@ -79,6 +79,25 @@ func TestSessionIDInUseIncludesCheckEvidence(t *testing.T) {
 	}
 }
 
+func TestSessionIDInUseIncludesEmptyTraceDirectory(t *testing.T) {
+	t.Parallel()
+	runtime, err := Resume(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "build-job-1234"
+	trace, err := runtime.PrepareDriveTrace(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(trace), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if used, err := runtime.sessionIDInUse(id); err != nil || !used {
+		t.Fatalf("ID with empty trace directory: used = %v, err = %v", used, err)
+	}
+}
+
 func TestRuntimeWithoutRunHasNoopSuspendAndErrorsOnStatusAdvance(t *testing.T) {
 	t.Parallel()
 	root := testRoot(t)
