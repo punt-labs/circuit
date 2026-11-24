@@ -9,11 +9,12 @@ import (
 	"slices"
 	"time"
 
+	"github.com/punt-labs/circuit/internal/circuitpath"
 	"github.com/punt-labs/punt-observe-go/telemetry"
 )
 
 const (
-	toolName       = "circuit"
+	toolName       = circuitpath.ToolName
 	commandEvent   = "circuit.cli.command"
 	commandVersion = 1
 
@@ -66,9 +67,9 @@ type observability struct {
 }
 
 func telemetryDisabled(logger *slog.Logger) bool {
-	home, err := os.UserHomeDir()
-	if err == nil && filepath.IsAbs(home) {
-		_, err = os.Lstat(filepath.Join(home, ".punt-labs", toolName, "telemetry-off"))
+	home, err := circuitpath.HomeRoot()
+	if err == nil {
+		_, err = os.Lstat(filepath.Join(home, "telemetry-off"))
 		if err == nil || errors.Is(err, fs.ErrNotExist) {
 			return err == nil
 		}

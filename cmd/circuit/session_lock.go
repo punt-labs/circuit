@@ -6,6 +6,8 @@ import (
 	"os"
 	"slices"
 	"syscall"
+
+	"github.com/punt-labs/circuit/internal/circuitpath"
 )
 
 func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bool, error) {
@@ -30,7 +32,11 @@ func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bo
 }
 
 func (cmd command) lockSessions(mode int) (*os.File, error) {
-	lock, err := os.Open(cmd.workingDir()) //nolint:gosec // G304: lock the workspace directory itself
+	workspace, err := circuitpath.ResolveWorkspace(cmd.workingDir())
+	if err != nil {
+		return nil, fmt.Errorf("resolve session workspace: %w", err)
+	}
+	lock, err := os.Open(workspace.LockDir) //nolint:gosec // G304: lock the workspace directory itself
 	if err != nil {
 		return nil, fmt.Errorf("open session lock: %w", err)
 	}

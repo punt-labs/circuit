@@ -89,13 +89,14 @@ func TestListLoadAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 		t.Run(fmt.Sprintf("session=%t", withSession), func(t *testing.T) {
 			stdout := &bytes.Buffer{}
 			cmd := testCommand(t, stdout)
+			stateRoot := filepath.Join(cmd.cwd, ".punt-labs", "local", "circuit")
 			dirs := []string{cmd.cwd}
 			wantSessions := 0
 			if withSession {
 				if err := cmd.run([]string{"start", "build-job"}); err != nil {
 					t.Fatal(err)
 				}
-				dirs = append(dirs, filepath.Join(cmd.cwd, ".tmp"), filepath.Join(cmd.cwd, ".tmp", "sessions"))
+				dirs = append(dirs, stateRoot, filepath.Join(stateRoot, "sessions"))
 				wantSessions = 1
 			}
 			for _, dir := range dirs {
@@ -119,8 +120,8 @@ func TestListLoadAndJSONStatusInReadOnlyWorkspace(t *testing.T) {
 				t.Fatalf("expected %d sessions, got %s (decode: %v)", wantSessions, stdout, err)
 			}
 			if !withSession {
-				if _, err := os.Stat(filepath.Join(cmd.cwd, ".tmp")); !os.IsNotExist(err) {
-					t.Fatalf("read-only commands created .tmp: %v", err)
+				if _, err := os.Stat(stateRoot); !os.IsNotExist(err) {
+					t.Fatalf("read-only commands created the private store: %v", err)
 				}
 			}
 		})
@@ -148,7 +149,8 @@ func TestOpenDriveTraceDoesNotOverwriteExistingTrace(t *testing.T) {
 		}
 		t.Fatalf("reopen trace: got %v, want file exists", err)
 	}
-	content, err := os.ReadFile(runtime.DriveTracePath(id))
+	path := filepath.Join(cmd.cwd, ".punt-labs", "local", "circuit", "traces", id, "drive.jsonl")
+	content, err := os.ReadFile(path)
 	if err != nil || string(content) != "original trace" {
 		t.Fatalf("original trace was not preserved: %q (%v)", content, err)
 	}

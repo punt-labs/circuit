@@ -435,6 +435,9 @@ func fakePi(t *testing.T, reader *bufio.Reader, writer io.Writer, responses map[
 func testRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	machines := filepath.Join(root, "machines")
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)

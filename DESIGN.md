@@ -143,7 +143,8 @@ auto-stop.
 
 - Sessions are identified by generated session ID, not by machine name
   alone.
-- Active sessions are persisted under `.tmp/sessions/<id>.json`.
+- Active sessions are persisted as `sessions/<id>.json` in the
+  [private state directory](README.md#session-storage).
 - Context injection includes all active sessions.
 - CLI commands accept optional session qualifiers where ambiguity is
   possible.
@@ -162,9 +163,9 @@ counts survive suspend/resume boundaries correctly.
 
 - A future long-running process should keep the same runtime in memory
   and suspend only on exit.
-- The suspended file format is JSON, stored under `.tmp/sessions/`.
-- `.tmp/circuit.suspended.json` is read only as a legacy migration
-  source.
+- The suspended file format is JSON, stored under `sessions/` in the
+  private state directory. The older single-file format is read there as
+  `circuit.suspended.json` only if manually copied into that directory.
 
 ## ADR 8: Pi hosts circuit as a thin adapter
 
@@ -340,8 +341,8 @@ Real `--json` slices were delivered through `tdd-flow` using this path.
 ## ADR 16: Driver traces are required for dogfood evaluation
 
 **Decision:** `circuit drive` writes a JSONL trace to
-`.tmp/circuit/<session-id>/drive.jsonl`. The trace records prompts,
-responses, workspace status after each response, and accepted
+`traces/<session-id>/drive.jsonl` in the private state directory. The trace
+records prompts, responses, workspace status after each response, and accepted
 transitions.
 
 **Evidence:** Before tracing, a TDD smoke appeared to have produced an
@@ -355,7 +356,7 @@ setup reasons and falsely satisfied the red gate.
 **Constraints:**
 
 - Trace is driver-level observability, not part of B-machine semantics.
-- Trace files live under the session-scoped `.tmp/circuit/<session-id>/`
+- Trace files live under the session-scoped `traces/<session-id>/`
   directory.
 - The trace must record enough information to diagnose process behavior
   without relying on memory of the run.

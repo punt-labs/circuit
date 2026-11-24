@@ -1,6 +1,9 @@
 package circuitrun
 
-import "github.com/punt-labs/circuit/internal/circuitb"
+import (
+	"github.com/punt-labs/circuit/internal/circuitb"
+	"github.com/punt-labs/circuit/internal/circuitpath"
+)
 
 type SessionState string
 
@@ -13,6 +16,7 @@ const (
 
 type Runtime struct {
 	root          string
+	workspace     circuitpath.Workspace
 	sessions      map[string]*Run
 	currentID     string
 	lastState     SessionState

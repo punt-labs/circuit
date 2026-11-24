@@ -81,7 +81,8 @@ successfully.
 ## 6. Session persistence across harness restarts
 
 The suspend/resume model works for CLI and now supports multiple active
-sessions. Sessions persist as `.tmp/sessions/<id>.json`, where IDs use
+sessions. Sessions persist as `sessions/<id>.json` in the
+[private state directory](../README.md#session-storage), where IDs use
 `<machine>-<4hex>`. Pi extension calls shell out to the same CLI, so a pi
 restart can discover persisted sessions through `circuit status` and
 context injection includes every active session.

@@ -928,7 +928,7 @@ func TestDriveCommandWritesTrace(t *testing.T) {
 		t.Fatalf("drive returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
-	tracePath := filepath.Join(cmd.cwd, ".tmp", "circuit", sessionID, "drive.jsonl")
+	tracePath := filepath.Join(cmd.cwd, ".punt-labs", "local", "circuit", "traces", sessionID, "drive.jsonl")
 	content, err := os.ReadFile(tracePath)
 	if err != nil {
 		t.Fatalf("read trace: %v", err)
@@ -1056,6 +1056,9 @@ func TestUnknownCommandFails(t *testing.T) {
 func testCommand(t *testing.T, stdout *bytes.Buffer) command {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	machines := filepath.Join(root, "machines")
 	if err := os.MkdirAll(machines, 0o700); err != nil {
 		t.Fatalf("create machines dir: %v", err)

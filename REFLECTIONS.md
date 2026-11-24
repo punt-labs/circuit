@@ -107,10 +107,10 @@ Circuit stays generic. Machines, prompts, and checks are open for extension.
 Before tracing, we could see only final diffs and final check state. That was not
 enough to know whether Pi actually followed TDD.
 
-`circuit drive` now writes:
+`circuit drive` writes to the [private state directory](README.md#session-storage):
 
 ```text
-.tmp/circuit/<session-id>/drive.jsonl
+traces/<session-id>/drive.jsonl
 ```
 
 The trace records:

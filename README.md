@@ -157,8 +157,39 @@ checks:
 | `circuit help` | Print the command list |
 
 A session is one running instance of a machine. Its ID is the machine name plus
-four hex digits, such as `build-job-a3f8`. Session state is saved as JSON under
-`.tmp/sessions/` in the directory where you run `circuit`.
+four hex digits, such as `build-job-a3f8`.
+
+### Session storage
+
+Circuit saves session JSON in `sessions/` and drive traces in `traces/` under
+the private state directory:
+
+| Workspace | Private state directory |
+|-----------|-------------------------|
+| Git checkout | `.punt-labs/local/circuit/` at the checkout root |
+| Linked Git worktree | `.punt-labs/local/circuit/worktrees/<key>/` in the main checkout or, for a bare or separate Git directory, in the common Git directory |
+| Directory outside Git | `~/.punt-labs/circuit/data/workspaces/<key>/` |
+
+Invoking Circuit from a subdirectory of a checkout keeps separate sessions in
+`workspaces/<key>/` below that checkout's private state directory. A key is
+the SHA-256 of the physical absolute workspace directory (the checkout root
+for the worktree key), with no trailing newline. Machine checks still run from
+the directory where you invoke Circuit. Circuit creates a private ignore file
+when writing Git workspace state, so routine Git operations do not pick it up.
+Publishing that ignore file requires a filesystem that supports hard links.
+For linked worktrees whose common Git directory is named `.git`, Circuit
+uses Git on `PATH` to distinguish bare repositories from regular checkouts.
+Moving a keyed directory changes its key; copy the old state directory to
+the new key if you need to keep those sessions.
+
+Circuit does not read or remove the old `.tmp` store. Before running the
+new version, you can copy `.tmp/sessions/<id>.json` to `sessions/<id>.json`
+and `.tmp/circuit/<id>/drive.jsonl` to `traces/<id>/drive.jsonl` under the
+new private state directory. Copy an older `.tmp/circuit.suspended.json`
+to `circuit.suspended.json` there if you still need to resume it. Copy
+only into unoccupied destinations, and keep paths referenced by saved
+sessions accessible. Leave check evidence at the locations expected by your
+checks; it is not Circuit-managed state.
 
 ### Diagnostics and telemetry
 
@@ -321,7 +352,8 @@ reaches a terminal state.
   one.
 - pi works in the current directory and can change files there.
 - Each run writes a JSON Lines trace of prompts, responses, `git status` output
-  and transitions to `.tmp/circuit/<session>/drive.jsonl`.
+  and transitions to `traces/<session>/drive.jsonl` in the
+  [private state directory](#session-storage).
 - A run drives one session.
 
 ## Documentation
