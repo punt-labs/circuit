@@ -120,6 +120,25 @@ func TestSessionDriveSingleJSONResult(t *testing.T) {
 	}
 }
 
+func TestSessionDriveParsesDashLeadingTask(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--task", "- Build it", "--json"}, "- Build it"},
+		{[]string{"--task=--quiet", "--json"}, "--quiet"},
+	} {
+		call, err := parseInvocation(append([]string{"session", "drive", "build-job"}, tc.args...))
+		if err != nil || call.task != tc.want || !call.json || call.quiet {
+			t.Fatalf("task %v: %+v (%v)", tc.args, call, err)
+		}
+	}
+	if _, err := parseInvocation([]string{"session", "drive", "build-job", "--task", "--json"}); err == nil {
+		t.Fatal("--task accepted a following option as its value")
+	}
+}
+
 func TestDoctorReportsRequiredAndOptionalChecks(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("HOME", t.TempDir())

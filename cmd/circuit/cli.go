@@ -40,6 +40,7 @@ type commandSpec struct {
 }
 
 const machineOperand = "<machine>"
+const taskFlag = "--task"
 
 var commandTree = []commandSpec{
 	{actionMachine, "<command>", "Manage B machines.", "", 0, 0},
@@ -78,7 +79,11 @@ func parseInvocation(args []string) (invocation, error) {
 	var parseErr error
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		switch arg {
+		flag, attached, hasAttached := strings.Cut(arg, "=")
+		if flag != taskFlag {
+			flag = arg
+		}
+		switch flag {
 		case "--":
 			operands = append(operands, args[i+1:]...)
 			i = len(args)
@@ -90,8 +95,8 @@ func parseInvocation(args []string) (invocation, error) {
 			call.verbose = true
 		case "--quiet", "-q":
 			call.quiet = true
-		case "--task":
-			consumed, err := call.parseTask(operands, args[i+1:])
+		case taskFlag:
+			consumed, err := call.parseTask(operands, args[i+1:], attached, hasAttached)
 			i += consumed
 			if err != nil {
 				parseErr = err
@@ -115,18 +120,34 @@ func parseInvocation(args []string) (invocation, error) {
 	return call.validate(spec)
 }
 
-func (call *invocation) parseTask(path, args []string) (int, error) {
+func (call *invocation) parseTask(path, args []string, attached string, hasAttached bool) (int, error) {
 	if len(path) < 2 || strings.Join(path[:2], " ") != string(actionDrive) {
 		return 0, errors.New("--task is only supported after session drive")
 	}
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+	if hasAttached {
+		return 0, call.setTask(attached)
+	}
+	if len(args) == 0 || isStandaloneOption(args[0]) {
 		return 0, errors.New("--task requires a goal")
 	}
-	if call.taskSet {
-		return 1, errors.New("--task may only be specified once")
+	return 1, call.setTask(args[0])
+}
+
+func isStandaloneOption(arg string) bool {
+	switch arg {
+	case "--", "--help", "-h", jsonFlag, "--verbose", "-v", "--quiet", "-q", taskFlag:
+		return true
+	default:
+		return strings.HasPrefix(arg, taskFlag+"=")
 	}
-	call.task, call.taskSet = args[0], true
-	return 1, nil
+}
+
+func (call *invocation) setTask(goal string) error {
+	if call.taskSet {
+		return errors.New("--task may only be specified once")
+	}
+	call.task, call.taskSet = goal, true
+	return nil
 }
 
 func (call invocation) validate(spec commandSpec) (invocation, error) {
@@ -214,7 +235,7 @@ func (cmd command) printHelp(action actionName) error {
 	var help strings.Builder
 	printHelpCommands(&help, action)
 	if action == actionDrive {
-		fmt.Fprintln(&help, "\nOptions:\n  --task <goal>  Goal text passed to Pi (default: no explicit goal).")
+		fmt.Fprintln(&help, "\nOptions:\n  --task <goal>  Goal text passed to Pi (default: no explicit goal).\n                 Use --task=<goal> if the goal matches an option.")
 	}
 	fmt.Fprintln(&help, "\nGlobal flags (off by default):\n  -h, --help     Show help for this command.\n  -q, --quiet    Suppress progress and nonessential diagnostics.\n  -v, --verbose  Log command outcome and duration to stderr (incompatible with quiet).")
 	if action != actionCompletion {
