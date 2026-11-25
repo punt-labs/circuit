@@ -55,34 +55,36 @@ Current extension commands:
 
 Slash commands (human control):
 
-- `/circuit list` lists available machines from `machines/*.mch`.
-- `/circuit load <machine>` validates a machine and its check bindings without
+- `/circuit machine list` lists available machines from `machines/*.mch`.
+- `/circuit machine check <machine>` validates a machine and its check bindings without
   starting a session.
-- `/circuit scaffold <machine>` generates missing BOOL check bindings and
+- `/circuit machine scaffold <machine>` generates missing BOOL check bindings and
   failing registry stubs.
-- `/circuit start <machine>` starts a new circuit session from a named machine.
-- `/circuit status [session]` shows all known active or stopped sessions, or one
-  selected session.
-- `/circuit advance <event> [session]` requests `Advance(event)` against the
+- `/circuit session start <machine>` starts a new circuit session from a named machine.
+- `/circuit session list` shows all known active or stopped sessions.
+- `/circuit session show <session>` shows the selected session.
+- `/circuit session advance <event> [session]` requests `Advance(event)` against the
   only active session or a selected session.
-- `/circuit stop [session]` stops the only active session or a selected session.
-- `/circuit unload <session>` removes a stopped session from runtime storage.
+- `/circuit session stop [session]` stops the only active session or a selected session.
+- `/circuit session remove <session>` removes a stopped session from runtime storage.
+- `/circuit status` summarizes workspace session counts for humans.
 
-LLM tools (full parity with slash commands):
+LLM tools (machine and session operations):
 
-- `circuit_list` lists available machines.
-- `circuit_load` validates a machine and its check bindings.
-- `circuit_scaffold` generates missing BOOL check bindings and failing registry
+- `circuit_machine_list` lists available machines.
+- `circuit_machine_check` validates a machine and its check bindings.
+- `circuit_machine_scaffold` generates missing BOOL check bindings and failing registry
   stubs.
-- `circuit_start` starts an active circuit from a named machine.
-- `circuit_status` reports known session state and valid operations; it accepts
-  an optional session ID.
-- `circuit_advance` requests a transition; the B machine validates the
+- `circuit_session_start` starts an active circuit from a named machine.
+- `circuit_session_list` lists all known sessions and their operations.
+- `circuit_session_show` reports the state and valid operations of one session;
+  it requires a session ID.
+- `circuit_session_advance` requests a transition; the B machine validates the
   precondition and returns allowed or blocked. It accepts an optional session ID
   when multiple sessions are active.
-- `circuit_stop` stops an active circuit session; it accepts an optional
+- `circuit_session_stop` stops an active circuit session; it accepts an optional
   session ID. Stopping a known stopped session is idempotent.
-- `circuit_unload` removes a stopped session from runtime storage.
+- `circuit_session_remove` removes a stopped session from runtime storage.
 
 Context injection:
 
@@ -121,28 +123,28 @@ The pi-hosted Circuit spike keeps pi as the interactive harness and delegates
 machine semantics to Go. The expected manual smoke path is:
 
 ```text
-/circuit list
-/circuit load build-job
-/circuit start build-job
-/circuit status
-/circuit advance start
-/circuit status
-/circuit advance finish
+/circuit machine list
+/circuit machine check build-job
+/circuit session start build-job
+/circuit session list
+/circuit session advance start
+/circuit session list
+/circuit session advance finish
 ```
 
 The start command should show a session ID, `current: idle`, `Advance(start)`
-enabled, and `Advance(finish)` blocked. After `/circuit advance start`,
-`/circuit status` should show `current: running` with `Advance(finish)` enabled.
-After `/circuit advance finish`, that session reaches `done` and auto-stops.
-With more than one active session, use `/circuit advance <event> <session>` and
-`/circuit stop <session>`.
+enabled, and `Advance(finish)` blocked. After `/circuit session advance start`,
+`/circuit session list` should show `current: running` with `Advance(finish)` enabled.
+After `/circuit session advance finish`, that session reaches `done` and auto-stops.
+With more than one active session, use `/circuit session advance <event> <session>` and
+`/circuit session stop <session>`.
 
 The precondition smoke uses `review-flow`:
 
 ```text
-/circuit start review-flow
-/circuit advance requestReview
-/circuit status
+/circuit session start review-flow
+/circuit session advance requestReview
+/circuit session list
 ```
 
 `requestReview` runs the registered `makeCheck` command, stores the boolean in
@@ -153,7 +155,7 @@ accept or block the transition.
 
 The other relationship — circuit as the outer runner driving `pi --mode rpc` —
 was first tested in spike 3 (`cmd/circuit-rpc-spike/`) and now ships as
-`circuit drive <machine> [--task <goal>]` (see DESIGN.md ADR 14–16). The runner
+`circuit session drive <machine> [--task <goal>]` (see DESIGN.md ADR 14–16). The runner
 owns the B-machine state, sends the state prompt from
 `machines/<machine>.prompts.yaml`, waits for pi's `agent_settled` event,
 extracts the agent's chosen operation, and validates it against the machine

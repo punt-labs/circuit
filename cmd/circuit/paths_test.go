@@ -51,7 +51,7 @@ func TestNonGitWorkspacePersistsSessionsUnderHome(t *testing.T) {
 	if err := os.Remove(filepath.Join(cmd.cwd, ".git")); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatal(err)
 	}
 	id := extractSessionID(t, stdout.String())
@@ -60,7 +60,7 @@ func TestNonGitWorkspacePersistsSessionsUnderHome(t *testing.T) {
 		t.Fatalf("session files = %v, err = %v", matches, err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"status", "--json", id}); err != nil {
+	if err := cmd.run([]string{"session", "show", "--json", id}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), id) {
@@ -220,8 +220,8 @@ func TestStateIsIgnoredInGitWithoutAnExistingIgnoreRule(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 	git(t, cmd.cwd, "init", "-q")
-	cmd.backend = &stubBackend{responses: []string{"start", "finish"}}
-	if err := cmd.run([]string{"drive", "build-job"}); err != nil {
+	cmd.backend = &stubBackend{responses: []string{"session", "start", "finish"}}
+	if err := cmd.run([]string{"session", "drive", "build-job"}); err != nil {
 		t.Fatal(err)
 	}
 	id := extractSessionID(t, stdout.String())
@@ -252,7 +252,7 @@ func TestStateIgnoreDoesNotReplaceExistingFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("traces/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.run([]string{"start", "build-job"}); err == nil || !strings.Contains(err.Error(), "private state ignore file") {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err == nil || !strings.Contains(err.Error(), "private state ignore file") {
 		t.Fatalf("start with incompatible ignore file: %v", err)
 	}
 	if contents, err := os.ReadFile(path); err != nil || string(contents) != "traces/\n" {

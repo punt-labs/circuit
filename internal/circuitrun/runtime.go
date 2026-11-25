@@ -105,6 +105,10 @@ func (runtime *Runtime) StatusAll() ([]StatusReport, error) {
 	return reports, nil
 }
 
+func (runtime *Runtime) SessionCounts() (int, int) {
+	return len(runtime.activeSessionIDs()), len(runtime.stoppedSessionIDs())
+}
+
 func (runtime *Runtime) StatusByID(id string) (StatusReport, error) {
 	run, err := runtime.knownSessionByID(id)
 	if err != nil {
@@ -130,21 +134,26 @@ func (runtime *Runtime) AdvanceByID(id string, event string) (AdvanceReport, err
 }
 
 func (runtime *Runtime) Stop() error {
+	_, err := runtime.StopSession()
+	return err
+}
+
+func (runtime *Runtime) StopSession() (string, error) {
 	activeIDs := runtime.activeSessionIDs()
 	if len(activeIDs) > 1 {
-		return fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(activeIDs, ", "))
+		return "", fmt.Errorf("multiple active sessions; specify one of: %s", strings.Join(activeIDs, ", "))
 	}
 	if len(activeIDs) == 1 {
-		return runtime.StopByID(activeIDs[0])
+		return activeIDs[0], runtime.StopByID(activeIDs[0])
 	}
 	stoppedIDs := runtime.stoppedSessionIDs()
 	if len(stoppedIDs) > 1 {
-		return fmt.Errorf("multiple stopped sessions; specify one of: %s", strings.Join(stoppedIDs, ", "))
+		return "", fmt.Errorf("multiple stopped sessions; specify one of: %s", strings.Join(stoppedIDs, ", "))
 	}
 	if len(stoppedIDs) == 1 {
-		return nil
+		return stoppedIDs[0], nil
 	}
-	return errors.New("no session to stop; run: circuit start <machine>")
+	return "", errors.New("no session to stop; run: circuit session start <machine>")
 }
 
 func (runtime *Runtime) StopByID(id string) error {
@@ -173,7 +182,7 @@ func (runtime *Runtime) UnloadByID(id string) error {
 		return fmt.Errorf("unknown session: %s", id)
 	}
 	if run.Session == SessionActive {
-		return fmt.Errorf("cannot unload active session: %s", id)
+		return fmt.Errorf("cannot remove active session: %s", id)
 	}
 	delete(runtime.sessions, id)
 	if runtime.currentID == id {
@@ -279,13 +288,13 @@ func (runtime *Runtime) singleSessionByIDs(ids []string, noneErr, manyFmt string
 
 func (runtime *Runtime) singleKnownSession() (*Run, error) {
 	return runtime.singleSessionByIDs(runtime.knownSessionIDs(),
-		"no session; run: circuit start <machine>",
+		"no session; run: circuit session start <machine>",
 		"multiple sessions")
 }
 
 func (runtime *Runtime) singleActiveSession() (*Run, error) {
 	return runtime.singleSessionByIDs(runtime.activeSessionIDs(),
-		"no active session; run: circuit start <machine>",
+		"no active session; run: circuit session start <machine>",
 		"multiple active sessions")
 }
 

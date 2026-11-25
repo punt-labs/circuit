@@ -7,10 +7,47 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 )
+
+func TestPiBackendDiagnosticsRespectQuiet(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	pi := `#!/bin/sh
+printf '%s\n' 'Pi diagnostic' >&2
+IFS= read -r request || exit 1
+printf '%s\n' '{"type":"agent_settled"}'
+IFS= read -r request
+`
+	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte(pi), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		quiet bool
+		want  string
+	}{
+		{name: "normal", want: "Pi diagnostic\n"},
+		{name: "quiet", quiet: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			cmd := command{cwd: dir, stderr: &stderr, quiet: tc.quiet}
+			backend, stop, err := cmd.agentBackend()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = backend.Prompt("test")
+			stop()
+			if err != nil || stderr.String() != tc.want {
+				t.Fatalf("Pi prompt: %v; stderr = %q, want %q", err, &stderr, tc.want)
+			}
+		})
+	}
+}
 
 func TestStopPiBackend(t *testing.T) {
 	t.Parallel()

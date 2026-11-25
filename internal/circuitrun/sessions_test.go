@@ -746,7 +746,7 @@ func TestUnloadRejectsActiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if err := runtime.UnloadByID(id); err == nil || !strings.Contains(err.Error(), "cannot unload active session") {
+	if err := runtime.UnloadByID(id); err == nil || !strings.Contains(err.Error(), "cannot remove active session") {
 		t.Fatalf("unload active error = %v, want active rejection", err)
 	}
 }

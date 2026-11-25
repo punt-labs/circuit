@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"strings"
 )
 
 // version is set at build time with -ldflags "-X main.version=$(VERSION)"
@@ -20,25 +20,15 @@ func resolveVersion() string {
 		return version
 	}
 	if info, ok := readBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		return strings.TrimPrefix(info.Main.Version, "v")
 	}
-	return "dev"
+	return "0.0.0-dev"
 }
 
-func (cmd command) version(args []string) error {
-	jsonMode := false
-	for _, arg := range args {
-		if arg != jsonFlag {
-			return fmt.Errorf("unexpected argument: %s", arg)
-		}
-		jsonMode = true
-	}
+func (cmd command) version() error {
 	v := resolveVersion()
-	if jsonMode {
-		if err := json.NewEncoder(cmd.stdout).Encode(map[string]string{"version": v}); err != nil {
-			return fmt.Errorf("encode version: %w", err)
-		}
-		return nil
+	if cmd.json {
+		return cmd.writeJSON(map[string]string{"version": v})
 	}
 	if _, err := fmt.Fprintf(cmd.stdout, "circuit %s\n", v); err != nil {
 		return fmt.Errorf("write version: %w", err)

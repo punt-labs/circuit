@@ -47,14 +47,16 @@ class FakePi {
 class FakeAdapter implements CircuitAdapter {
 	readonly calls: string[][] = [];
 	machines = ["build-job", "review-flow"];
+	machineListResult?: CircuitResult;
 	result: CircuitResult = { ok: true, message: "ok" };
-
-	listMachines(): Promise<string[]> {
-		return Promise.resolve(this.machines);
-	}
 
 	run(args: string[]): Promise<CircuitResult> {
 		this.calls.push(args);
+		if (args.join(" ") === "machine list") {
+			return Promise.resolve(
+				this.machineListResult ?? { ok: true, message: this.machines.join("\n") },
+			);
+		}
 		return Promise.resolve(this.result);
 	}
 }
@@ -66,14 +68,15 @@ describe("registerCircuitExtension", () => {
 
 		expect([...pi.commands.keys()]).toEqual(["circuit"]);
 		expect([...pi.tools.keys()].sort()).toEqual([
-			"circuit_advance",
-			"circuit_list",
-			"circuit_load",
-			"circuit_scaffold",
-			"circuit_start",
-			"circuit_status",
-			"circuit_stop",
-			"circuit_unload",
+			"circuit_machine_check",
+			"circuit_machine_list",
+			"circuit_machine_scaffold",
+			"circuit_session_advance",
+			"circuit_session_list",
+			"circuit_session_remove",
+			"circuit_session_show",
+			"circuit_session_start",
+			"circuit_session_stop",
 		]);
 	});
 
@@ -102,6 +105,7 @@ describe("registerCircuitExtension", () => {
 		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
 
 		const result: unknown = await pi.runBeforeAgentStart();
+		expect(adapter.calls).toEqual([["session", "list"]]);
 
 		expect(JSON.stringify(result)).toContain("Circuit session: build-job-a111");
 		expect(JSON.stringify(result)).toContain("circuit-state");
@@ -132,14 +136,14 @@ describe("registerCircuitExtension", () => {
 		const adapter = new FakeAdapter();
 		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
 
-		await pi.tools.get("circuit_load")?.execute("tool", { machine: "review-flow" });
-		await pi.tools.get("circuit_scaffold")?.execute("tool", { machine: "review-flow" });
-		await pi.tools.get("circuit_start")?.execute("tool", { machine: "review-flow" });
+		await pi.tools.get("circuit_machine_check")?.execute("tool", { machine: "review-flow" });
+		await pi.tools.get("circuit_machine_scaffold")?.execute("tool", { machine: "review-flow" });
+		await pi.tools.get("circuit_session_start")?.execute("tool", { machine: "review-flow" });
 
 		expect(adapter.calls).toEqual([
-			["load", "review-flow"],
-			["scaffold", "review-flow"],
-			["start", "review-flow"],
+			["machine", "check", "review-flow"],
+			["machine", "scaffold", "review-flow"],
+			["session", "start", "review-flow"],
 		]);
 	});
 
@@ -147,7 +151,7 @@ describe("registerCircuitExtension", () => {
 		const pi = new FakePi();
 		registerCircuitExtension(pi as unknown as ExtensionAPI, new FakeAdapter());
 
-		const output = await pi.tools.get("circuit_start")?.execute("tool", {});
+		const output = await pi.tools.get("circuit_session_start")?.execute("tool", {});
 
 		expect(output?.content[0]?.text).toBe("missing machine parameter");
 		expect(output?.details).toEqual({ ok: false });
@@ -159,15 +163,17 @@ describe("registerCircuitExtension", () => {
 		adapter.result = { ok: true, message: "advanced: idle -> running" };
 		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
 
-		const list = await pi.tools.get("circuit_list")?.execute("tool", {});
+		const list = await pi.tools.get("circuit_machine_list")?.execute("tool", {});
 		const status = await pi.tools
-			.get("circuit_status")
+			.get("circuit_session_show")
 			?.execute("tool", { session: "build-job-a111" });
-		const stop = await pi.tools.get("circuit_stop")?.execute("tool", { session: "build-job-a111" });
-		const unload = await pi.tools.get("circuit_unload")?.execute("tool", {
+		const stop = await pi.tools
+			.get("circuit_session_stop")
+			?.execute("tool", { session: "build-job-a111" });
+		const unload = await pi.tools.get("circuit_session_remove")?.execute("tool", {
 			session: "build-job-a111",
 		});
-		const advance = await pi.tools.get("circuit_advance")?.execute("tool", {
+		const advance = await pi.tools.get("circuit_session_advance")?.execute("tool", {
 			event: "start",
 			session: "build-job-a111",
 		});
@@ -178,10 +184,11 @@ describe("registerCircuitExtension", () => {
 		expect(unload?.content[0]?.text).toBe("advanced: idle -> running");
 		expect(advance?.details).toMatchObject({ ok: true, allowed: true });
 		expect(adapter.calls).toEqual([
-			["status", "build-job-a111"],
-			["stop", "build-job-a111"],
-			["unload", "build-job-a111"],
-			["advance", "start", "build-job-a111"],
+			["machine", "list"],
+			["session", "show", "build-job-a111"],
+			["session", "stop", "build-job-a111"],
+			["session", "remove", "build-job-a111"],
+			["session", "advance", "start", "build-job-a111"],
 		]);
 	});
 
@@ -189,13 +196,44 @@ describe("registerCircuitExtension", () => {
 		const pi = new FakePi();
 		registerCircuitExtension(pi as unknown as ExtensionAPI, new FakeAdapter());
 
-		const output = await pi.tools.get("circuit_advance")?.execute("tool", {});
-		const unload = await pi.tools.get("circuit_unload")?.execute("tool", {});
+		const output = await pi.tools.get("circuit_session_advance")?.execute("tool", {});
+		const unload = await pi.tools.get("circuit_session_remove")?.execute("tool", {});
+		const show = await pi.tools.get("circuit_session_show")?.execute("tool", {});
 
 		expect(output?.content[0]?.text).toBe("missing event parameter");
 		expect(output?.details).toEqual({ ok: false });
 		expect(unload?.content[0]?.text).toBe("missing session parameter");
 		expect(unload?.details).toEqual({ ok: false });
+		expect(show?.content[0]?.text).toBe("missing session parameter");
+		expect(show?.details).toEqual({ ok: false });
+	});
+
+	it("lists sessions through the session list tool", async () => {
+		const pi = new FakePi();
+		const adapter = new FakeAdapter();
+		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
+
+		const result = await pi.tools.get("circuit_session_list")?.execute("tool", {});
+
+		expect(result?.content[0]?.text).toBe("ok");
+		expect(adapter.calls).toEqual([["session", "list"]]);
+	});
+
+	it("distinguishes empty and failed machine listings", async () => {
+		const pi = new FakePi();
+		const adapter = new FakeAdapter();
+		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
+		const list = pi.tools.get("circuit_machine_list");
+
+		adapter.machines = [];
+		const empty = await list?.execute("tool", {});
+		expect(empty?.content[0]?.text).toBe("No machines found");
+		expect(empty?.details).toEqual({ ok: true, count: 0 });
+
+		adapter.machineListResult = { ok: false, message: "cannot read machines" };
+		const failed = await list?.execute("tool", {});
+		expect(failed?.content[0]?.text).toBe("cannot read machines");
+		expect(failed?.details).toEqual({ ok: false });
 	});
 
 	it("routes tool calls through adapter", async () => {
@@ -204,12 +242,12 @@ describe("registerCircuitExtension", () => {
 		adapter.result = { ok: true, message: "advanced: idle -> running" };
 		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
 
-		const output = await pi.tools.get("circuit_advance")?.execute("tool", {
+		const output = await pi.tools.get("circuit_session_advance")?.execute("tool", {
 			event: "start",
 			session: "build-job-a111",
 		});
 
-		expect(adapter.calls).toEqual([["advance", "start", "build-job-a111"]]);
+		expect(adapter.calls).toEqual([["session", "advance", "start", "build-job-a111"]]);
 		expect(output?.content[0]?.text).toBe("advanced: idle -> running");
 		expect(output?.details).toMatchObject({ ok: true, allowed: true });
 	});
@@ -221,23 +259,28 @@ describe("registerCircuitExtension", () => {
 		registerCircuitExtension(pi as unknown as ExtensionAPI, adapter);
 		const ctx = { ui: { notify: (message: string) => notifications.push(message) } };
 
-		await pi.commands.get("circuit")?.handler("list", ctx);
-		await pi.commands.get("circuit")?.handler("load review-flow", ctx);
-		await pi.commands.get("circuit")?.handler("scaffold review-flow", ctx);
-		await pi.commands.get("circuit")?.handler("start review-flow", ctx);
-		await pi.commands.get("circuit")?.handler("status build-job-a111", ctx);
-		await pi.commands.get("circuit")?.handler("advance start build-job-a111", ctx);
-		await pi.commands.get("circuit")?.handler("stop build-job-a111", ctx);
-		await pi.commands.get("circuit")?.handler("unload build-job-a111", ctx);
+		await pi.commands.get("circuit")?.handler("machine list", ctx);
+		await pi.commands.get("circuit")?.handler("session list", ctx);
+		await pi.commands.get("circuit")?.handler("status", ctx);
+		await pi.commands.get("circuit")?.handler("machine check review-flow", ctx);
+		await pi.commands.get("circuit")?.handler("machine scaffold review-flow", ctx);
+		await pi.commands.get("circuit")?.handler("session start review-flow", ctx);
+		await pi.commands.get("circuit")?.handler("session show build-job-a111", ctx);
+		await pi.commands.get("circuit")?.handler("session advance start build-job-a111", ctx);
+		await pi.commands.get("circuit")?.handler("session stop build-job-a111", ctx);
+		await pi.commands.get("circuit")?.handler("session remove build-job-a111", ctx);
 
 		expect(adapter.calls).toEqual([
-			["load", "review-flow"],
-			["scaffold", "review-flow"],
-			["start", "review-flow"],
-			["status", "build-job-a111"],
-			["advance", "start", "build-job-a111"],
-			["stop", "build-job-a111"],
-			["unload", "build-job-a111"],
+			["machine", "list"],
+			["session", "list"],
+			["status"],
+			["machine", "check", "review-flow"],
+			["machine", "scaffold", "review-flow"],
+			["session", "start", "review-flow"],
+			["session", "show", "build-job-a111"],
+			["session", "advance", "start", "build-job-a111"],
+			["session", "stop", "build-job-a111"],
+			["session", "remove", "build-job-a111"],
 		]);
 		expect(notifications).toContain("build-job\nreview-flow");
 		expect(notifications).toContain("ok");
@@ -249,18 +292,18 @@ describe("registerCircuitExtension", () => {
 		registerCircuitExtension(pi as unknown as ExtensionAPI, new FakeAdapter());
 		const ctx = { ui: { notify: (message: string) => notifications.push(message) } };
 
-		await pi.commands.get("circuit")?.handler("load", ctx);
-		await pi.commands.get("circuit")?.handler("scaffold", ctx);
-		await pi.commands.get("circuit")?.handler("start", ctx);
-		await pi.commands.get("circuit")?.handler("advance", ctx);
-		await pi.commands.get("circuit")?.handler("unload", ctx);
+		await pi.commands.get("circuit")?.handler("machine check", ctx);
+		await pi.commands.get("circuit")?.handler("machine scaffold", ctx);
+		await pi.commands.get("circuit")?.handler("session start", ctx);
+		await pi.commands.get("circuit")?.handler("session advance", ctx);
+		await pi.commands.get("circuit")?.handler("session remove", ctx);
 
 		expect(notifications).toEqual([
-			"Usage: /circuit load <machine>",
-			"Usage: /circuit scaffold <machine>",
-			"Usage: /circuit start <machine>",
-			"Usage: /circuit advance <event> [session]",
-			"Usage: /circuit unload <session>",
+			"Usage: /circuit machine check <machine>",
+			"Usage: /circuit machine scaffold <machine>",
+			"Usage: /circuit session start <machine>",
+			"Usage: /circuit session advance <event> [session]",
+			"Usage: /circuit session remove <session>",
 		]);
 	});
 });

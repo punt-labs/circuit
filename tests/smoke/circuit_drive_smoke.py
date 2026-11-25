@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Circuit drive smoke test.
 
-Runs `circuit drive build-job --task "..."` against a live `pi --mode rpc`
+Runs `circuit session drive build-job --task "..."` against a live `pi --mode rpc`
 process and asserts the loop reaches terminal.
 
 Requirements: pi binary on PATH, model API key, go toolchain.
@@ -52,6 +52,7 @@ def main() -> int:
         result = subprocess.run(
             [
                 str(binary),
+                "session",
                 "drive",
                 "build-job",
                 "--task",
@@ -78,7 +79,7 @@ def main() -> int:
                 print(f"FAIL: expected {expected!r} in drive output", file=sys.stderr)
                 return 1
 
-        print("PASS: circuit drive build-job reached done via real pi")
+        print("PASS: circuit session drive build-job reached done via real pi")
         return 0
 
 

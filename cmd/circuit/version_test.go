@@ -16,9 +16,9 @@ func TestResolveVersion(t *testing.T) {
 		want    string
 	}{
 		{name: "ldflags", ldflags: "1.2.3", want: "1.2.3"},
-		{name: "module version", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.4.0"}}, ok: true, want: "v0.4.0"},
-		{name: "devel build", info: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, ok: true, want: "dev"},
-		{name: "no build info", want: "dev"},
+		{name: "module version", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.4.0"}}, ok: true, want: "0.4.0"},
+		{name: "devel build", info: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, ok: true, want: "0.0.0-dev"},
+		{name: "no build info", want: "0.0.0-dev"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

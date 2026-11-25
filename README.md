@@ -43,7 +43,7 @@ Make sure that directory is on your `PATH`.
 directory, so run it from the root of the checkout:
 
 ```bash
-circuit list
+circuit machine list
 ```
 
 ### Build Without Installing
@@ -54,25 +54,27 @@ Build the binary without installing it. The binary is written to `./circuit`:
 make build
 ```
 
-Copy `./circuit` to any directory on your `PATH`.
+Run `./circuit install` to install that binary to `~/.local/bin`, or copy it
+to another directory on your `PATH`.
 
 ### Check the Install
 
-From the root of the checkout, start the `build-job` example machine:
+Run `circuit doctor` to check local installation health. From the root of
+the checkout, start the `build-job` example machine:
 
 ```bash
-circuit start build-job
+circuit session start build-job
 ```
 
 The output shows `current: idle`, with `Advance(start)` enabled and
 `Advance(finish)` blocked. Request the two events in order:
 
 ```bash
-circuit advance start
+circuit session advance start
 ```
 
 ```bash
-circuit advance finish
+circuit session advance finish
 ```
 
 The commands print `advanced: idle -> running` and then
@@ -83,7 +85,7 @@ The commands print `advanced: idle -> running` and then
 
 - **B machines as workflows** --- each workflow is a B abstract machine that
   ProB can model-check and the Go binary can run.
-- **Enforced transitions** --- `circuit advance` applies an event only when the
+- **Enforced transitions** --- `circuit session advance` applies an event only when the
   machine's precondition holds; otherwise it prints `blocked:` and each failing
   condition, and the state does not change.
 - **External checks** --- a machine's boolean variables can be bound to shell
@@ -93,11 +95,11 @@ The commands print `advanced: idle -> running` and then
   session ID.
 - **Automatic stop** --- a session stops when it reaches a state with no
   enabled events.
-- **JSON output** --- `--json` on `load`, `scaffold`, `start`, `status`,
-  `advance`, `stop` and `unload`.
+- **JSON output** --- `--json` returns one structured value on every
+  result-bearing command.
 - **pi extension** --- `/circuit` commands and `circuit_*` tools inside pi, with
   the state of each active session added to the agent's context on every turn.
-- **Agent-driven runs** --- `circuit drive` runs a machine from start to finish
+- **Agent-driven runs** --- `circuit session drive` runs a machine from start to finish
   with pi as the agent and advances only on events the machine accepts.
 
 ## What It Looks Like
@@ -105,7 +107,7 @@ The commands print `advanced: idle -> running` and then
 A session of the `build-job` machine, including a blocked request:
 
 ```text
-$ circuit start build-job
+$ circuit session start build-job
 started: build-job
 session: build-job-4156
 session: build-job-4156
@@ -116,12 +118,12 @@ enabled:
   Advance(start)
 blocked:
   Advance(finish)
-$ circuit advance finish
+$ circuit session advance finish
 blocked: Advance(finish)
   needs: evt = start
-$ circuit advance start
+$ circuit session advance start
 advanced: idle -> running
-$ circuit advance finish
+$ circuit session advance finish
 advanced: running -> done
 ```
 
@@ -129,12 +131,12 @@ A machine with an external check. The `retry-flow` check fails on its first
 run and passes on its second:
 
 ```text
-$ circuit advance proceed
+$ circuit session advance proceed
 blocked: Advance(proceed)
   needs: gateOpen = TRUE
 checks:
   gateOpen: FALSE (invocations: 1)
-$ circuit advance proceed
+$ circuit session advance proceed
 advanced: waiting -> done
 checks:
   gateOpen: TRUE (invocations: 2)
@@ -142,19 +144,37 @@ checks:
 
 ## Commands
 
-| Command | What it does |
+| Command | What exit zero proves |
 |---------|-------------|
-| `circuit list` | List the machines in `machines/` |
-| `circuit load <machine>` | Check that a machine and its check bindings are valid, without starting a session |
-| `circuit scaffold <machine>` | Add missing check bindings, with registry entries that always return false |
-| `circuit start <machine>` | Start a new session and print its status |
-| `circuit status [session]` | Show every known session, or one session: current state, enabled and blocked events, and check results |
-| `circuit advance <event> [session]` | Request an event; name the session when more than one is active |
-| `circuit stop [session]` | Stop a session; name the session when more than one is active |
-| `circuit unload <session>` | Remove a stopped session |
-| `circuit drive <machine> [--task <goal>]` | Run a machine from start to finish with pi as the agent (see [Driving pi](#driving-pi)) |
-| `circuit version` | Print the installed version |
-| `circuit help` | Print the command list |
+| `circuit machine list` | Enumerated machine names from `machines/`. |
+| `circuit machine check <machine>` | Validated the machine and its bindings without starting a session. |
+| `circuit machine scaffold <machine>` | Generated any missing bindings and registry stubs that return false. |
+| `circuit session start <machine>` | Started and persisted a new session and returned its details. |
+| `circuit session list` | Read all active and stopped session reports. |
+| `circuit session show <session>` | Read the report for the named session. |
+| `circuit session advance <event> [session]` | Evaluated the event and persisted the outcome. A blocked outcome (`allowed: false` in JSON) leaves the workflow state unchanged; nothing is queued. Name the session when more than one is active. |
+| `circuit session stop [session]` | The selected session is stopped. Name the session when more than one is active. |
+| `circuit session remove <session>` | Removed the stopped session. |
+| `circuit session drive <machine> [--task <goal>]` | Reached a terminal state with Pi and persisted the session. See [Driving pi](#driving-pi). |
+| `circuit version` | Printed the binary version. |
+| `circuit status` | Read this workspace's active and stopped session counts. |
+| `circuit doctor` | All required installation checks passed. Git and Pi checks are optional. |
+| `circuit install` | Installed the running binary to `~/.local/bin/circuit`. |
+| `circuit completion bash` | Printed a Bash completion script. |
+
+Run `circuit --help` or `circuit` for the tree, and add `--help` (or `-h`)
+at any path for that command's output and exit contract. Pass `--json` before
+or after a command path for one JSON value: an array for a list, an object
+for a detail or action, or an object with an `error` string on failure.
+`--verbose` (`-v`) writes outcome diagnostics to stderr; `--quiet` (`-q`)
+suppresses progress, not results. They cannot be combined.
+
+Completion writes a script, not JSON. To enable it in Bash for the current
+shell (or add the line to `~/.bashrc`):
+
+```bash
+source <(circuit completion bash)
+```
 
 A session is one running instance of a machine. Its ID is the machine name plus
 four hex digits, such as `build-job-a3f8`.
@@ -292,7 +312,7 @@ receives `CIRCUIT_SESSION_ID`, `CIRCUIT_MACHINE_NAME`, `CIRCUIT_MACHINE_FILE`
 and `CIRCUIT_CURRENT_STATE` in its environment.
 
 A machine with `BOOL` variables cannot start until every variable has a
-binding. `circuit scaffold <machine>` adds the missing bindings and registry
+binding. `circuit machine scaffold <machine>` adds the missing bindings and registry
 entries. Each generated entry runs `false`, so the event it guards stays
 blocked until you replace the command.
 
@@ -324,14 +344,16 @@ the installed binary.
 
 | Slash command | Tool | What it does |
 |---------------|------|--------------|
-| `/circuit list` | `circuit_list` | List machines |
-| `/circuit load <machine>` | `circuit_load` | Validate a machine and its check bindings |
-| `/circuit scaffold <machine>` | `circuit_scaffold` | Add missing check bindings and stubs |
-| `/circuit start <machine>` | `circuit_start` | Start a session |
-| `/circuit status [session]` | `circuit_status` | Show session status |
-| `/circuit advance <event> [session]` | `circuit_advance` | Request an event |
-| `/circuit stop [session]` | `circuit_stop` | Stop a session |
-| `/circuit unload <session>` | `circuit_unload` | Remove a stopped session |
+| `/circuit machine list` | `circuit_machine_list` | List machines |
+| `/circuit machine check <machine>` | `circuit_machine_check` | Validate a machine and its check bindings |
+| `/circuit machine scaffold <machine>` | `circuit_machine_scaffold` | Add missing check bindings and stubs |
+| `/circuit session start <machine>` | `circuit_session_start` | Start a session |
+| `/circuit session list` | `circuit_session_list` | List all known sessions |
+| `/circuit session show <session>` | `circuit_session_show` | Show one session |
+| `/circuit status` | — | Summarize workspace session counts |
+| `/circuit session advance <event> [session]` | `circuit_session_advance` | Request an event |
+| `/circuit session stop [session]` | `circuit_session_stop` | Stop a session |
+| `/circuit session remove <session>` | `circuit_session_remove` | Remove a stopped session |
 
 You type the slash commands; the agent calls the tools. Both run the same
 `circuit` command, which decides whether an event is accepted. While at least
@@ -340,7 +362,7 @@ and enabled events to the agent's context at the start of every turn.
 
 ## Driving pi
 
-`circuit drive <machine> --task "<goal>"` reverses the relationship: `circuit`
+`circuit session drive <machine> --task "<goal>"` reverses the relationship: `circuit`
 runs pi as the agent. It starts a session, launches `pi --mode rpc`, and for
 each state sends the prompt from `machines/<machine>.prompts.yaml` together with
 the goal. It reads the event pi asks for, runs the machine's checks, and

@@ -439,7 +439,7 @@ checks:
     returns: BOOL
 ```
 
-Runtime behavior for `circuit advance requestReview`:
+Runtime behavior for `circuit session advance requestReview`:
 
 1. Load the active machine.
 2. Load its check bindings and the check registry.
@@ -498,33 +498,34 @@ includes every active session.
 The user-facing Go CLI operates on active circuit sessions:
 
 ```bash
-circuit list
-circuit load pr-watch
-circuit scaffold pr-watch
-circuit start pr-watch
-circuit status
-circuit advance ReadyToMerge
-circuit stop
-circuit unload build-job-b4c9
+circuit machine list
+circuit machine check pr-watch
+circuit machine scaffold pr-watch
+circuit session start pr-watch
+circuit session list
+circuit session advance ReadyToMerge
+circuit session stop
+circuit session remove build-job-b4c9
 
 # Optional session qualifiers disambiguate multiple active sessions.
-circuit advance ReadyToMerge pr-watch-a3f8
-circuit stop build-job-b4c9
+circuit session advance ReadyToMerge pr-watch-a3f8
+circuit session stop build-job-b4c9
 ```
 
-`list` shows available B machines from `machines/*.mch`.
+`machine list` shows available B machines from `machines/*.mch`.
 
-`load` validates the B machine, its BOOL check bindings, and registry entries
+`machine check` validates the B machine, its BOOL check bindings, and registry entries
 without starting a session.
 
-`scaffold` generates missing `.checks.yaml` bindings and missing
+`machine scaffold` generates missing `.checks.yaml` bindings and missing
 `check-registry.yaml` entries for resolved BOOL variables. Generated commands are
 `false`, so unimplemented checks block safely.
 
-`start` loads the machine, initializes a new active session, and records the
+`session start` loads the machine, initializes a new active session, and records the
 machine plus current B state.
 
-`status` reports all known active or stopped sessions, or one selected session.
+`session list` reports all known active or stopped sessions; `session show`
+reports one selected session. Root `status` summarizes session counts.
 State is the B-machine variable; status is the operational report. The first
 status report includes:
 
@@ -543,17 +544,17 @@ Later status reports should grow operational metadata:
 - latest accepted transition;
 - latest blocked transition and failed preconditions.
 
-`advance <event> [session]` requests one explicit operation/event against the
+`session advance <event> [session]` requests one explicit operation/event against the
 only active session or the selected session. If multiple operations are enabled,
 Circuit does not guess. The caller must choose. If the requested operation is
 blocked, the command reports failed preconditions and leaves the active state
 unchanged.
 
-`stop [session]` stops the only active session or the selected session. Stopping
+`session stop [session]` stops the only active session or the selected session. Stopping
 a known stopped session is an idempotent success; stopping an unloaded or unknown
 session is not.
 
-`unload <session>` removes a stopped session from runtime storage. Active
+`session remove <session>` removes a stopped session from runtime storage. Active
 sessions cannot be unloaded.
 
 ## Harness relationships
@@ -567,17 +568,17 @@ runtime with the `.mch` file.
 
 ```text
 pi extension
-  -> circuit start pr-watch
-  -> circuit status
-  -> circuit advance ReadyToMerge
+  -> circuit session start pr-watch
+  -> circuit session list
+  -> circuit session advance ReadyToMerge
 ```
 
 Pi owns UI, status widgets, session integration, and user interaction. The B
 machine owns valid progress. The pi command surface should mirror the CLI:
-`/circuit list`, `/circuit load <machine>`, `/circuit scaffold <machine>`,
-`/circuit start <machine>`, `/circuit status`,
-`/circuit advance <event> [session]`, `/circuit stop [session]`, and
-`/circuit unload <session>`.
+`/circuit machine list`, `/circuit machine check <machine>`, `/circuit machine scaffold <machine>`,
+`/circuit session start <machine>`, `/circuit session list`, `/circuit session show <session>`,
+`/circuit session advance <event> [session]`, `/circuit session stop [session]`, and
+`/circuit session remove <session>`.
 
 ### Engine drives pi over RPC
 

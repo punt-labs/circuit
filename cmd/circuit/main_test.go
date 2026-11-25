@@ -23,9 +23,9 @@ func TestConcurrentSessionCommands(t *testing.T) {
 			worker := cmd
 			worker.stdout = &bytes.Buffer{}
 			<-ready
-			args := []string{"status"}
+			args := []string{"session", "list"}
 			if i < starts {
-				args = []string{"start", "build-job"}
+				args = []string{"session", "start", "build-job"}
 			}
 			if err := worker.run(args); err != nil {
 				t.Errorf("concurrent %s: %v", args[0], err)
@@ -35,7 +35,7 @@ func TestConcurrentSessionCommands(t *testing.T) {
 	close(ready)
 	workers.Wait()
 
-	if err := cmd.run([]string{"status", "--json"}); err != nil {
+	if err := cmd.run([]string{"session", "list", "--json"}); err != nil {
 		t.Fatalf("final status: %v", err)
 	}
 	var reports []statusJSONTest
@@ -49,28 +49,17 @@ func TestConcurrentSessionCommands(t *testing.T) {
 
 func TestUsageDocumentsJSONFlagForAllCommands(t *testing.T) {
 	t.Parallel()
-	stderr := &bytes.Buffer{}
-	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr, cwd: t.TempDir()}
-	_ = cmd.run([]string{"--help"})
-	usage := stderr.String()
-	for _, want := range []string{
-		"start",
-		"stop",
-		"status [--json]",
-		"advance [--json]",
-		"load [--json]",
-		"scaffold [--json]",
-		"unload [--json]",
+	for _, path := range []string{
+		"machine list", "machine check", "machine scaffold", "session start", "session list",
+		"session show", "session advance", "session stop", "session remove", "session drive",
+		"version", "status", "doctor", "install",
 	} {
-		if !strings.Contains(usage, want) {
-			t.Fatalf("usage missing %q:\n%s", want, usage)
+		var stdout, stderr bytes.Buffer
+		code := runCLI(append(strings.Fields(path), "-h"), &stdout, &stderr)
+		if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "--json") ||
+			!strings.Contains(stdout.String(), "Exit 0:") {
+			t.Errorf("%s -h: code %d, stdout %q, stderr %q", path, code, &stdout, &stderr)
 		}
-	}
-	if !strings.Contains(usage, "start [--json]") {
-		t.Fatalf("usage does not document --json for start:\n%s", usage)
-	}
-	if !strings.Contains(usage, "stop [--json]") {
-		t.Fatalf("usage does not document --json for stop:\n%s", usage)
 	}
 }
 
@@ -79,7 +68,7 @@ func TestBMachineList(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	err := cmd.run([]string{"list"})
+	err := cmd.run([]string{"machine", "list"})
 
 	if err != nil {
 		t.Fatalf("list returned error: %v", err)
@@ -109,11 +98,11 @@ func TestBMachineLoadValidatesChecks(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"load", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"machine", "check", "review-flow"}); err != nil {
 		t.Fatalf("load returned error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "loaded: review-flow") || !strings.Contains(output, "makeCheckPassed -> makeCheck: BOOL") {
+	if !strings.Contains(output, "checked: review-flow") || !strings.Contains(output, "makeCheckPassed -> makeCheck: BOOL") {
 		t.Fatalf("load output mismatch: %q", output)
 	}
 }
@@ -123,7 +112,7 @@ func TestBMachineLoadJSONReportsCheckBindings(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"load", "--json", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"machine", "check", "--json", "review-flow"}); err != nil {
 		t.Fatalf("load --json returned error: %v", err)
 	}
 	var report loadJSONTest
@@ -153,18 +142,18 @@ func TestBMachineScaffoldGeneratesFailingCheckStubs(t *testing.T) {
 		t.Fatalf("remove registry: %v", err)
 	}
 
-	if err := cmd.run([]string{"scaffold", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"machine", "scaffold", "review-flow"}); err != nil {
 		t.Fatalf("scaffold returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "scaffolded: review-flow") {
 		t.Fatalf("scaffold output mismatch: %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"start", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "review-flow"}); err != nil {
 		t.Fatalf("start with stubs returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "requestReview"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "requestReview"}); err != nil {
 		t.Fatalf("advance with stubs returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "blocked: Advance(requestReview)") {
@@ -183,7 +172,7 @@ func TestBMachineScaffoldJSONReportsGeneratedStubs(t *testing.T) {
 		t.Fatalf("remove registry: %v", err)
 	}
 
-	if err := cmd.run([]string{"scaffold", "--json", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"machine", "scaffold", "--json", "review-flow"}); err != nil {
 		t.Fatalf("scaffold --json returned error: %v", err)
 	}
 	var report scaffoldJSONTest
@@ -208,7 +197,7 @@ func TestBMachineStartRejectsUnscaffoldedBooleanMachine(t *testing.T) {
 		t.Fatalf("remove bindings: %v", err)
 	}
 
-	err := cmd.run([]string{"start", "review-flow"})
+	err := cmd.run([]string{"session", "start", "review-flow"})
 
 	if err == nil || !strings.Contains(err.Error(), "unbound BOOL variable makeCheckPassed") {
 		t.Fatalf("start error = %v, want unbound BOOL variable", err)
@@ -220,7 +209,7 @@ func TestBMachineStartJSONReportsStartedSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "--json", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "--json", "build-job"}); err != nil {
 		t.Fatalf("start --json returned error: %v", err)
 	}
 	var report statusJSONTest
@@ -242,11 +231,11 @@ func TestAdvanceJSONReportsAllowedAndBlockedTransitions(t *testing.T) {
 	t.Parallel()
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "--json", "start"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "--json", "start"}); err != nil {
 		t.Fatalf("advance --json start returned error: %v", err)
 	}
 	var allowed advanceJSONTest
@@ -258,12 +247,12 @@ func TestAdvanceJSONReportsAllowedAndBlockedTransitions(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start second build-job returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "--json", "finish", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "--json", "finish", sessionID}); err != nil {
 		t.Fatalf("advance --json finish returned error: %v", err)
 	}
 	var blocked advanceJSONTest
@@ -280,30 +269,30 @@ func TestStatusJSONReportsAllSessions(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start first build-job: %v", err)
 	}
 	first := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "start", first}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "start", first}); err != nil {
 		t.Fatalf("advance first start: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start second build-job: %v", err)
 	}
 	second := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "start", second}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "start", second}); err != nil {
 		t.Fatalf("advance second start: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "finish", second}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "finish", second}); err != nil {
 		t.Fatalf("advance second finish: %v", err)
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"status", "--json"}); err != nil {
+	if err := cmd.run([]string{"session", "list", "--json"}); err != nil {
 		t.Fatalf("status --json returned error: %v", err)
 	}
 	var reports []statusJSONTest
@@ -322,7 +311,7 @@ func TestBMachineStartStatusAdvance(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	startOutput := stdout.String()
@@ -334,7 +323,7 @@ func TestBMachineStartStatusAdvance(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "start"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "start"}); err != nil {
 		t.Fatalf("advance returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "advanced: idle -> running") {
@@ -342,7 +331,7 @@ func TestBMachineStartStatusAdvance(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status returned error: %v", err)
 	}
 	statusOutput := stdout.String()
@@ -362,7 +351,7 @@ func TestBMachineStatusWithoutSessionIsInformational(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status without session returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "no session") {
@@ -374,7 +363,7 @@ func TestBMachineAdvanceRequiresActiveCircuit(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"advance", "start"})
+	err := cmd.run([]string{"session", "advance", "start"})
 
 	if err == nil {
 		t.Fatal("advance without active circuit returned nil error")
@@ -389,12 +378,12 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start 1 returned error: %v", err)
 	}
 	first := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start 2 returned error: %v", err)
 	}
 	second := extractSessionID(t, stdout.String())
@@ -403,7 +392,7 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status returned error: %v", err)
 	}
 	statusOutput := stdout.String()
@@ -412,7 +401,7 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "start", first}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "start", first}); err != nil {
 		t.Fatalf("advance targeted session returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "advanced: idle -> running") {
@@ -420,7 +409,7 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"status", first}); err != nil {
+	if err := cmd.run([]string{"session", "show", first}); err != nil {
 		t.Fatalf("targeted status returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "current: running") {
@@ -428,11 +417,11 @@ func TestBMachineMultipleSessionsCanBeTargeted(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := cmd.run([]string{"stop", second}); err != nil {
+	if err := cmd.run([]string{"session", "stop", second}); err != nil {
 		t.Fatalf("targeted stop returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status after targeted stop returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "session: "+second) || !strings.Contains(stdout.String(), "session-state: stopped") {
@@ -445,18 +434,18 @@ func TestBMachineMultipleSessionsRejectImplicitAdvanceAndStop(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start 1 returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start 2 returned error: %v", err)
 	}
 
-	if err := cmd.run([]string{"advance", "start"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
+	if err := cmd.run([]string{"session", "advance", "start"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
 		t.Fatalf("implicit advance error = %v, want ambiguity", err)
 	}
-	if err := cmd.run([]string{"stop"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
+	if err := cmd.run([]string{"session", "stop"}); err == nil || !strings.Contains(err.Error(), "multiple active sessions") {
 		t.Fatalf("implicit stop error = %v, want ambiguity", err)
 	}
 }
@@ -466,12 +455,12 @@ func TestBMachineAdvanceBlocked(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	stdout.Reset()
 
-	err := cmd.run([]string{"advance", "finish"})
+	err := cmd.run([]string{"session", "advance", "finish"})
 
 	if err != nil {
 		t.Fatalf("blocked advance returned error: %v", err)
@@ -487,11 +476,11 @@ func TestReviewFlowRunsBoundCheckAndAdvances(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	writeRegistry(t, cmd.cwd, "true")
 
-	if err := cmd.run([]string{"start", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "review-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "requestReview"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "requestReview"}); err != nil {
 		t.Fatalf("advance returned error: %v", err)
 	}
 	output := stdout.String()
@@ -499,7 +488,7 @@ func TestReviewFlowRunsBoundCheckAndAdvances(t *testing.T) {
 		t.Fatalf("advance output mismatch: %q", output)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status returned error: %v", err)
 	}
 	statusOutput := stdout.String()
@@ -514,11 +503,11 @@ func TestReviewFlowBlocksWhenBoundCheckFails(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	writeRegistry(t, cmd.cwd, "false")
 
-	if err := cmd.run([]string{"start", "review-flow"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "review-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "requestReview"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "requestReview"}); err != nil {
 		t.Fatalf("advance returned error: %v", err)
 	}
 	output := stdout.String()
@@ -536,21 +525,21 @@ func TestPRWatchAdvancesToDone(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	writePRWatchRegistry(t, cmd.cwd, "true", "true")
 
-	if err := cmd.run([]string{"start", "pr-watch"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "pr-watch"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "current: watch") {
 		t.Fatalf("start output mismatch: %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "needsWork"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "needsWork"}); err != nil {
 		t.Fatalf("advance needsWork returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "advanced: watch -> fixing") {
 		t.Fatalf("advance needsWork output mismatch: %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "fixed"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "fixed"}); err != nil {
 		t.Fatalf("advance fixed returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "advanced: fixing -> done") {
@@ -564,13 +553,13 @@ func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	writeAlternatingRegistry(t, cmd.cwd)
 
-	if err := cmd.run([]string{"start", "retry-flow"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "retry-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	stdout.Reset()
 
 	// First advance: blocked (invocation 1 = odd = fail)
-	if err := cmd.run([]string{"advance", "proceed"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "proceed"}); err != nil {
 		t.Fatalf("advance 1 returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "blocked: Advance(proceed)") {
@@ -579,7 +568,7 @@ func TestRetryFlowBlocksThenAdvances(t *testing.T) {
 	stdout.Reset()
 
 	// Second advance: allowed (invocation 2 = even = pass)
-	if err := cmd.run([]string{"advance", "proceed"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "proceed"}); err != nil {
 		t.Fatalf("advance 2 returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "advanced: waiting -> done") {
@@ -593,7 +582,7 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	writeTDDRegistry(t, cmd.cwd, "test -f .tmp/circuit/$CIRCUIT_SESSION_ID/suite-green.stamp", "true")
 
-	if err := cmd.run([]string{"start", "tdd-flow"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "tdd-flow"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
@@ -607,7 +596,7 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 		t.Fatalf("write stamp: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"advance", "writeTest"}); err != nil {
+	if err := cmd.run([]string{"session", "advance", "writeTest"}); err != nil {
 		t.Fatalf("advance writeTest with suite green returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "blocked: Advance(writeTest)") {
@@ -634,7 +623,7 @@ func TestTDDFlowAdvancesThroughSessionScopedSuiteStamp(t *testing.T) {
 			}
 		}
 		stdout.Reset()
-		if err := cmd.run([]string{"advance", step.event}); err != nil {
+		if err := cmd.run([]string{"session", "advance", step.event}); err != nil {
 			t.Fatalf("advance %s returned error: %v", step.event, err)
 		}
 		if !strings.Contains(stdout.String(), step.want) {
@@ -648,22 +637,22 @@ func TestBMachineStop(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"stop"}); err != nil {
+	if err := cmd.run([]string{"session", "stop"}); err != nil {
 		t.Fatalf("stop returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "stopped") {
 		t.Fatalf("stop output mismatch: %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "stop", sessionID}); err != nil {
 		t.Fatalf("idempotent stop returned error: %v", err)
 	}
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status after stop returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "session-state: stopped") {
@@ -676,12 +665,12 @@ func TestBMachineStopJSONReportsStoppedSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"stop", "--json", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "stop", "--json", sessionID}); err != nil {
 		t.Fatalf("stop --json returned error: %v", err)
 	}
 	var report statusJSONTest
@@ -704,23 +693,23 @@ func TestBMachineUnloadStoppedSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "stop", sessionID}); err != nil {
 		t.Fatalf("stop returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"unload", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "remove", sessionID}); err != nil {
 		t.Fatalf("unload returned error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "unloaded") {
+	if !strings.Contains(stdout.String(), "removed") {
 		t.Fatalf("unload output mismatch: %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"status"}); err != nil {
+	if err := cmd.run([]string{"session", "list"}); err != nil {
 		t.Fatalf("status returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "no session") {
@@ -733,16 +722,16 @@ func TestBMachineUnloadJSONReportsUnloadedSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
 	stdout.Reset()
-	if err := cmd.run([]string{"stop", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "stop", sessionID}); err != nil {
 		t.Fatalf("stop returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"unload", "--json", sessionID}); err != nil {
+	if err := cmd.run([]string{"session", "remove", "--json", sessionID}); err != nil {
 		t.Fatalf("unload --json returned error: %v", err)
 	}
 	var report unloadJSONTest
@@ -762,12 +751,12 @@ func TestBMachineUnloadRejectsActiveSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	cmd := testCommand(t, stdout)
 
-	if err := cmd.run([]string{"start", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "start", "build-job"}); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
-	err := cmd.run([]string{"unload", sessionID})
-	if err == nil || !strings.Contains(err.Error(), "cannot unload active session") {
+	err := cmd.run([]string{"session", "remove", sessionID})
+	if err == nil || !strings.Contains(err.Error(), "cannot remove active session") {
 		t.Fatalf("unload active error = %v, want active rejection", err)
 	}
 }
@@ -776,37 +765,34 @@ func TestBMachineStopWithoutSessionFails(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"stop"})
+	err := cmd.run([]string{"session", "stop"})
 
 	if err == nil || !strings.Contains(err.Error(), "no session to stop") {
 		t.Fatalf("stop without session error = %v, want no session", err)
 	}
 }
 
-func TestMissingCommandFails(t *testing.T) {
+func TestBareInvocationPrintsHelp(t *testing.T) {
 	t.Parallel()
-	stderr := &bytes.Buffer{}
-	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr}
-
-	err := cmd.run([]string{})
-
-	if err == nil {
-		t.Fatal("empty command returned nil error")
+	var stdout, stderr bytes.Buffer
+	if code := runCLI(nil, &stdout, &stderr); code != 0 || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "usage:") {
+		t.Fatalf("bare invocation: code %d, stdout %q, stderr %q", code, &stdout, &stderr)
 	}
 }
 
 func TestHelpPrintsUsage(t *testing.T) {
 	t.Parallel()
-	stderr := &bytes.Buffer{}
-	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr}
+	stdout := &bytes.Buffer{}
+	cmd := command{stdout: stdout, stderr: &bytes.Buffer{}}
 
-	err := cmd.run([]string{"help"})
+	err := cmd.run([]string{"--help"})
 
 	if err != nil {
 		t.Fatalf("help returned error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "usage:") {
-		t.Fatalf("help did not print usage: %q", stderr.String())
+	if !strings.Contains(stdout.String(), "usage:") {
+		t.Fatalf("help did not print usage: %q", stdout.String())
 	}
 }
 
@@ -814,7 +800,7 @@ func TestListRejectsExtraArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"list", "extra"})
+	err := cmd.run([]string{"machine", "list", "extra"})
 
 	if err == nil {
 		t.Fatal("list with extra args returned nil error")
@@ -825,7 +811,7 @@ func TestStartRejectsNoArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"start"})
+	err := cmd.run([]string{"session", "start"})
 
 	if err == nil {
 		t.Fatal("start with no args returned nil error")
@@ -847,7 +833,7 @@ func TestAdvanceRejectsNoArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"advance"})
+	err := cmd.run([]string{"session", "advance"})
 
 	if err == nil {
 		t.Fatal("advance with no args returned nil error")
@@ -858,7 +844,7 @@ func TestUnloadRejectsNoArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"unload"})
+	err := cmd.run([]string{"session", "remove"})
 
 	if err == nil {
 		t.Fatal("unload with no args returned nil error")
@@ -869,7 +855,7 @@ func TestStopRejectsTooManyArgs(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
 
-	err := cmd.run([]string{"stop", "one", "two"})
+	err := cmd.run([]string{"session", "stop", "one", "two"})
 
 	if err == nil {
 		t.Fatal("stop with too many args returned nil error")
@@ -894,11 +880,11 @@ func (backend *stubBackend) Prompt(message string) (string, error) {
 func TestLoadGuidanceReadsMachinePromptFile(t *testing.T) {
 	t.Parallel()
 	cmd := testCommand(t, &bytes.Buffer{})
-	guidance, err := cmd.loadGuidance("tdd-flow", "Add load --json")
+	guidance, err := cmd.loadGuidance("tdd-flow", "Add machine check --json")
 	if err != nil {
 		t.Fatalf("load guidance: %v", err)
 	}
-	if guidance.Goal != "Add load --json" {
+	if guidance.Goal != "Add machine check --json" {
 		t.Fatalf("goal = %q, want task", guidance.Goal)
 	}
 	for state, want := range map[string]string{
@@ -924,7 +910,7 @@ func TestDriveCommandWritesTrace(t *testing.T) {
 	cmd := testCommand(t, stdout)
 	cmd.backend = &stubBackend{responses: []string{"start", "finish"}}
 
-	if err := cmd.run([]string{"drive", "build-job", "--task", "Trace drive run."}); err != nil {
+	if err := cmd.run([]string{"session", "drive", "build-job", "--task", "Trace drive run."}); err != nil {
 		t.Fatalf("drive returned error: %v", err)
 	}
 	sessionID := extractSessionID(t, stdout.String())
@@ -955,7 +941,7 @@ func TestDriveCommandRunsBuildJobToDoneWithFakeBackend(t *testing.T) {
 	backend := &stubBackend{responses: []string{"start", "finish"}}
 	cmd.backend = backend
 
-	if err := cmd.run([]string{"drive", "build-job", "--task", "Drive build-job to done."}); err != nil {
+	if err := cmd.run([]string{"session", "drive", "build-job", "--task", "Drive build-job to done."}); err != nil {
 		t.Fatalf("drive returned error: %v", err)
 	}
 	output := stdout.String()
@@ -991,7 +977,7 @@ func TestDrivePreservesSessionStartedDuringAgentTurn(t *testing.T) {
 			worker := cmd
 			worker.stdout = &bytes.Buffer{}
 			done := make(chan error, 1)
-			go func() { done <- worker.run([]string{"start", "build-job"}) }()
+			go func() { done <- worker.run([]string{"session", "start", "build-job"}) }()
 			select {
 			case err := <-done:
 				if err != nil {
@@ -1004,11 +990,11 @@ func TestDrivePreservesSessionStartedDuringAgentTurn(t *testing.T) {
 		}
 		return agent.Prompt(prompt)
 	})
-	if err := cmd.run([]string{"drive", "build-job"}); err != nil {
+	if err := cmd.run([]string{"session", "drive", "build-job"}); err != nil {
 		t.Fatalf("drive returned error: %v", err)
 	}
 	stdout.Reset()
-	if err := cmd.run([]string{"status", "--json"}); err != nil {
+	if err := cmd.run([]string{"session", "list", "--json"}); err != nil {
 		t.Fatalf("status returned error: %v", err)
 	}
 	var reports []statusJSONTest
@@ -1040,16 +1026,12 @@ func TestSmokeDriveScriptExists(t *testing.T) {
 
 func TestUnknownCommandFails(t *testing.T) {
 	t.Parallel()
-	stderr := &bytes.Buffer{}
-	cmd := command{stdout: &bytes.Buffer{}, stderr: stderr}
+	cmd := command{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
 
 	err := cmd.run([]string{"nope"})
 
-	if err == nil {
-		t.Fatal("unknown command returned nil error")
-	}
-	if !strings.Contains(stderr.String(), "usage:") {
-		t.Fatalf("unknown command did not print usage: %q", stderr.String())
+	if err == nil || !strings.Contains(err.Error(), "unknown command: nope") {
+		t.Fatalf("unknown command returned unexpected error: %v", err)
 	}
 }
 

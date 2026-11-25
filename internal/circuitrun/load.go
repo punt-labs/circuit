@@ -18,7 +18,7 @@ func (runtime *Runtime) Load(machineName string) (LoadReport, error) {
 	for _, variable := range machine.BooleanVariables() {
 		binding, ok := bindings.Checks[variable]
 		if !ok {
-			return LoadReport{}, fmt.Errorf("unbound BOOL variable %s; run: circuit scaffold %s", variable, machineName)
+			return LoadReport{}, fmt.Errorf("unbound BOOL variable %s; run: circuit machine scaffold %s", variable, machineName)
 		}
 		registered, ok := registry.Checks[binding.Use]
 		if !ok {

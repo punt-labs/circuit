@@ -4,31 +4,32 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"syscall"
 
 	"github.com/punt-labs/circuit/internal/circuitpath"
 )
 
-func (cmd command) dispatchWithSessionLock(action actionName, args []string) (bool, error) {
+func (cmd command) dispatchWithSessionLock(call invocation) (bool, error) {
 	var mode int
-	switch action {
+	switch call.action {
 	case actionStatus:
+		mode = syscall.LOCK_SH
+	case actionSessionList, actionSessionShow:
 		mode = syscall.LOCK_EX
-		if slices.Contains(args[1:], jsonFlag) {
+		if cmd.json {
 			mode = syscall.LOCK_SH
 		}
-	case actionScaffold, actionStart, actionStop, actionUnload:
+	case actionScaffold, actionStart, actionStop, actionRemove:
 		mode = syscall.LOCK_EX
 	default:
-		return cmd.dispatch(action, args)
+		return cmd.dispatch(call)
 	}
 	lock, err := cmd.lockSessions(mode)
 	if err != nil {
 		return false, err
 	}
 	defer cmd.closeSessionLock(lock)
-	return cmd.dispatch(action, args)
+	return cmd.dispatch(call)
 }
 
 func (cmd command) lockSessions(mode int) (*os.File, error) {

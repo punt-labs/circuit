@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/punt-labs/circuit/internal/circuitb"
 	"github.com/punt-labs/circuit/internal/circuitrpc"
@@ -37,6 +36,8 @@ type command struct {
 	cwd     string
 	backend circuitrpc.AgentBackend
 	observe *observability
+	json    bool
+	quiet   bool
 }
 
 func main() {
@@ -44,17 +45,30 @@ func main() {
 }
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
+	call, parseErr := parseInvocation(args)
+	cmd := command{stdout: stdout, stderr: stderr}
+	if parseErr == nil && call.help {
+		if err := cmd.runInvocation(call, nil); err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitUsage
+		}
+		return 0
+	}
 	handler, err := logging.New(toolName, "cli")
 	var sink slog.Handler = slog.DiscardHandler
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
-		fmt.Fprintln(stderr, "circuit: private diagnostics unavailable: timed out waiting for the rotation lock")
+		if !call.quiet {
+			fmt.Fprintln(stderr, "circuit: private diagnostics unavailable: timed out waiting for the rotation lock")
+		}
 	case err != nil:
-		fmt.Fprintln(stderr, "circuit: private diagnostics unavailable")
+		if !call.quiet {
+			fmt.Fprintln(stderr, "circuit: private diagnostics unavailable")
+		}
 	default:
 		sink = handler
 		defer func() {
-			if err := handler.Close(); err != nil {
+			if err := handler.Close(); err != nil && !call.quiet {
 				fmt.Fprintln(stderr, "circuit: could not close private diagnostics")
 			}
 		}()
@@ -66,66 +80,75 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}, commandSchema())
 	defer usage.Shutdown(context.Background())
 
-	cmd := command{stdout: stdout, stderr: stderr, observe: &observability{logger: logger, usage: usage}}
-	if err := cmd.run(args); err != nil {
-		fmt.Fprintln(stderr, err)
+	cmd.observe = &observability{logger: logger, usage: usage}
+	if err := cmd.runInvocation(call, parseErr); err != nil {
+		if !call.json {
+			fmt.Fprintln(stderr, err)
+		}
 		return exitUsage
 	}
 	return 0
 }
 
-func (cmd command) run(args []string) error {
-	action := commandAction(args)
-	started := time.Now()
-	blocked, err := cmd.dispatchWithSessionLock(action, args)
-	if cmd.observe != nil {
-		cmd.observe.record(action, blocked, err, time.Since(started))
-	}
-	return err
-}
-
-func (cmd command) dispatch(action actionName, args []string) (bool, error) {
-	switch action {
-	case actionMissing:
-		cmd.printUsage()
-		return false, errors.New("missing command")
-	case actionHelp:
-		cmd.printUsage()
-		return false, nil
-	case actionList:
-		return false, cmd.listMachines(args[1:])
-	case actionLoad:
-		return false, cmd.load(args[1:])
+func (cmd command) dispatch(call invocation) (bool, error) {
+	switch call.action {
+	case actionMachineList:
+		return false, cmd.listMachines()
+	case actionMachineCheck:
+		return false, cmd.checkMachine(call.args[0])
 	case actionScaffold:
-		return false, cmd.scaffold(args[1:])
+		return false, cmd.scaffold(call.args[0])
 	case actionStart:
-		return false, cmd.start(args[1:])
-	case actionStatus:
-		return false, cmd.status(args[1:])
+		return false, cmd.start(call.args[0])
+	case actionSessionList:
+		return false, cmd.listSessions()
+	case actionSessionShow:
+		return false, cmd.showSession(call.args[0])
 	case actionAdvance:
-		return cmd.advance(args[1:])
+		return cmd.advance(call.args[0], optionalArg(call.args[1:]))
 	case actionStop:
-		return false, cmd.stop(args[1:])
-	case actionUnload:
-		return false, cmd.unload(args[1:])
-	case "drive":
-		return false, cmd.drive(args[1:])
-	case actionVersion:
-		return false, cmd.version(args[1:])
+		return false, cmd.stop(optionalArg(call.args))
+	case actionRemove:
+		return false, cmd.remove(call.args[0])
+	case actionDrive:
+		return false, cmd.drive(call.args[0], call.task)
 	default:
-		cmd.printUsage()
-		return false, fmt.Errorf("unknown command: %s", args[0])
+		return false, cmd.dispatchRoot(call)
 	}
 }
 
-func (cmd command) listMachines(args []string) error {
-	if len(args) != 0 {
-		return fmt.Errorf("expected no arguments, got %d", len(args))
+func (cmd command) dispatchRoot(call invocation) error {
+	switch call.action {
+	case actionStatus:
+		return cmd.status()
+	case actionVersion:
+		return cmd.version()
+	case actionDoctor:
+		return cmd.doctor()
+	case actionInstall:
+		return cmd.install()
+	case actionCompletion:
+		return cmd.completion(call.args[0])
+	default:
+		return fmt.Errorf("unknown command: %s", call.action)
 	}
+}
+
+func optionalArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+func (cmd command) listMachines() error {
 	runtime := circuitrun.New(cmd.workingDir())
 	names, err := runtime.ListMachines()
 	if err != nil {
 		return err
+	}
+	if cmd.json {
+		return cmd.writeJSON(names)
 	}
 	for _, name := range names {
 		fmt.Fprintln(cmd.stdout, name)
@@ -133,59 +156,27 @@ func (cmd command) listMachines(args []string) error {
 	return nil
 }
 
-func (cmd command) load(args []string) error {
-	jsonMode, machine, err := parseLoadArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) checkMachine(machine string) error {
 	runtime := circuitrun.New(cmd.workingDir())
 	report, err := runtime.Load(machine)
 	if err != nil {
 		return err
 	}
-	if jsonMode {
-		return cmd.writeLoadJSON(report)
+	if cmd.json {
+		return cmd.writeJSON(machineCheckJSON{Machine: report.MachineName, Checks: report.Checks})
 	}
-	fmt.Fprintf(cmd.stdout, "loaded: %s\n", report.MachineName)
+	fmt.Fprintf(cmd.stdout, "checked: %s\n", report.MachineName)
 	cmd.printCheckBindings(report.Checks)
 	return nil
 }
 
-func parseJSONFlagWithMachineArg(args []string) (bool, string, error) {
-	var jsonMode bool
-	var machine string
-	for _, arg := range args {
-		switch arg {
-		case jsonFlag:
-			jsonMode = true
-		default:
-			if machine != "" {
-				return false, "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			machine = arg
-		}
-	}
-	if machine == "" {
-		return false, "", fmt.Errorf("expected one machine argument, got %d arguments", len(args))
-	}
-	return jsonMode, machine, nil
-}
-
-func parseLoadArgs(args []string) (bool, string, error) {
-	return parseJSONFlagWithMachineArg(args)
-}
-
-func (cmd command) scaffold(args []string) error {
-	jsonMode, machine, err := parseScaffoldArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) scaffold(machine string) error {
 	runtime := circuitrun.New(cmd.workingDir())
 	report, err := runtime.Scaffold(machine)
 	if err != nil {
 		return err
 	}
-	if jsonMode {
+	if cmd.json {
 		return cmd.writeScaffoldJSON(report)
 	}
 	fmt.Fprintf(cmd.stdout, "scaffolded: %s\n", report.MachineName)
@@ -198,15 +189,7 @@ func (cmd command) scaffold(args []string) error {
 	return nil
 }
 
-func parseScaffoldArgs(args []string) (bool, string, error) {
-	return parseJSONFlagWithMachineArg(args)
-}
-
-func (cmd command) start(args []string) error {
-	jsonMode, machine, err := parseStartArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) start(machine string) error {
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
@@ -218,7 +201,7 @@ func (cmd command) start(args []string) error {
 	if err := runtime.Suspend(); err != nil {
 		return err
 	}
-	if jsonMode {
+	if cmd.json {
 		return cmd.writeStatusReportJSON(report)
 	}
 	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
@@ -227,15 +210,7 @@ func (cmd command) start(args []string) error {
 	return nil
 }
 
-func parseStartArgs(args []string) (bool, string, error) {
-	return parseJSONFlagWithMachineArg(args)
-}
-
-func (cmd command) drive(args []string) error {
-	machine, task, err := parseDriveArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) drive(machine, task string) error {
 	backend, stopBackend, err := cmd.agentBackend()
 	if err != nil {
 		return err
@@ -275,8 +250,10 @@ func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, stri
 	if err != nil {
 		return nil, "", nil, err
 	}
-	fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
-	fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	if !cmd.json && !cmd.quiet {
+		fmt.Fprintf(cmd.stdout, "started: %s\n", report.MachineName)
+		fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	}
 	trace, err := cmd.openDriveTrace(runtime, id)
 	return runtime, id, trace, err
 }
@@ -284,7 +261,7 @@ func (cmd command) startDrivenSession(machine string) (*circuitrun.Runtime, stri
 func (cmd command) printDriveTransitions(trace io.Writer, transitions []circuitrun.AdvanceReport) {
 	for _, transition := range transitions {
 		writeDriveTransition(trace, transition)
-		if transition.Allowed {
+		if transition.Allowed && !cmd.json && !cmd.quiet {
 			fmt.Fprintf(cmd.stdout, "advanced: %s -> %s\n", transition.From, transition.To)
 		}
 	}
@@ -299,13 +276,22 @@ func (cmd command) finishDrivenSession(runtime *circuitrun.Runtime, id string) e
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.stdout, "terminal: %s\n", status.Current)
 	lock, err := cmd.lockSessions(syscall.LOCK_EX)
 	if err != nil {
 		return err
 	}
 	defer cmd.closeSessionLock(lock)
-	return runtime.PersistNewSession(id)
+	if err := runtime.PersistNewSession(id); err != nil {
+		return err
+	}
+	if cmd.json {
+		return cmd.writeStatusReportJSON(status)
+	}
+	if cmd.quiet {
+		fmt.Fprintf(cmd.stdout, "session: %s\n", id)
+	}
+	fmt.Fprintf(cmd.stdout, "terminal: %s\n", status.Current)
+	return nil
 }
 
 type driveTrace interface {
@@ -316,7 +302,9 @@ type driveTrace interface {
 func (cmd command) closeDriveTrace(trace driveTrace) {
 	if err := trace.Close(); err != nil {
 		cmd.diagnostics().Warn("Could not close the drive trace")
-		fmt.Fprintln(cmd.stderr, "circuit: could not close the drive trace; it may be incomplete")
+		if !cmd.quiet {
+			fmt.Fprintln(cmd.stderr, "circuit: could not close the drive trace; it may be incomplete")
+		}
 	}
 }
 
@@ -375,37 +363,17 @@ func (cmd command) agentBackend() (circuitrpc.AgentBackend, func(), error) {
 	if cmd.backend != nil {
 		return cmd.backend, nil, nil
 	}
-	return launchPiBackend(cmd.workingDir(), cmd.diagnostics().With("component", "circuit.pi"))
+	stderr := cmd.stderr
+	if cmd.quiet {
+		stderr = io.Discard
+	}
+	return launchPiBackend(cmd.workingDir(), stderr, cmd.diagnostics().With("component", "circuit.pi"))
 }
 
-func parseDriveArgs(args []string) (string, string, error) {
-	var machine, task string
-	for index := 0; index < len(args); index++ {
-		arg := args[index]
-		switch arg {
-		case "--task":
-			if index+1 >= len(args) {
-				return "", "", errors.New("--task requires a value")
-			}
-			task = args[index+1]
-			index++
-		default:
-			if machine != "" {
-				return "", "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			machine = arg
-		}
-	}
-	if machine == "" {
-		return "", "", errors.New("drive requires a machine name")
-	}
-	return machine, task, nil
-}
-
-func launchPiBackend(cwd string, logger *slog.Logger) (circuitrpc.AgentBackend, func(), error) {
+func launchPiBackend(cwd string, stderr io.Writer, logger *slog.Logger) (circuitrpc.AgentBackend, func(), error) {
 	process := exec.Command("pi", "--mode", "rpc", "--no-session", "--approve")
 	process.Dir = cwd
-	process.Stderr = os.Stderr
+	process.Stderr = stderr
 	stdin, err := process.StdinPipe()
 	if err != nil {
 		return nil, nil, err
@@ -462,46 +430,62 @@ func (cmd command) loadGuidance(machine string, task string) (circuitrpc.DriverG
 	return circuitrpc.DriverGuidance{Goal: task, States: file.States}, nil
 }
 
-func (cmd command) status(args []string) error {
-	jsonMode, session, err := parseStatusArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) status() error {
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
 	}
-	if session != "" {
-		report, err := runtime.StatusByID(session)
-		if err != nil {
-			return err
-		}
-		if jsonMode {
-			return cmd.writeStatusJSON([]circuitrun.StatusReport{report})
-		}
-		cmd.printStatusReport(report)
-		return runtime.Suspend()
+	active, stopped := runtime.SessionCounts()
+	if cmd.json {
+		return cmd.writeJSON(map[string]int{"active": active, "stopped": stopped})
+	}
+	fmt.Fprintf(cmd.stdout, "sessions: %d active, %d stopped\n", active, stopped)
+	return nil
+}
+
+func (cmd command) showSession(session string) error {
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
+	}
+	report, err := runtime.StatusByID(session)
+	if err != nil {
+		return err
+	}
+	if cmd.json {
+		return cmd.writeStatusReportJSON(report)
+	}
+	if err := runtime.Suspend(); err != nil {
+		return err
+	}
+	cmd.printStatusReport(report)
+	return nil
+}
+
+func (cmd command) listSessions() error {
+	runtime, err := circuitrun.Resume(cmd.workingDir())
+	if err != nil {
+		return err
 	}
 	reports, err := runtime.StatusAll()
 	if err != nil {
 		return err
 	}
-	if jsonMode {
+	if cmd.json {
 		return cmd.writeStatusJSON(reports)
 	}
 	if len(reports) == 0 {
 		fmt.Fprintln(cmd.stdout, "no session")
 		return nil
 	}
+	if err := runtime.Suspend(); err != nil {
+		return err
+	}
 	cmd.printStatusReports(reports)
-	return runtime.Suspend()
+	return nil
 }
 
-func parseStatusArgs(args []string) (bool, string, error) {
-	return parseJSONFlagWithOptionalArgument(args)
-}
-
-type loadJSONEntry struct {
+type machineCheckJSON struct {
 	Machine string                          `json:"machine"`
 	Checks  []circuitrun.CheckBindingReport `json:"checks"`
 }
@@ -532,7 +516,7 @@ type statusJSONEntry struct {
 	Checks       map[string]checkJSON `json:"checks,omitempty"`
 }
 
-type unloadJSONEntry struct {
+type removeJSONEntry struct {
 	Session      string `json:"session"`
 	SessionState string `json:"sessionState"`
 }
@@ -545,10 +529,6 @@ type callStatusJSON struct {
 type checkJSON struct {
 	Result      bool `json:"result"`
 	Invocations int  `json:"invocations"`
-}
-
-func (cmd command) writeLoadJSON(report circuitrun.LoadReport) error {
-	return cmd.writeJSON(loadJSONEntry{Machine: report.MachineName, Checks: report.Checks})
 }
 
 func (cmd command) writeScaffoldJSON(report circuitrun.ScaffoldReport) error {
@@ -592,12 +572,9 @@ func (cmd command) writeStatusJSON(reports []circuitrun.StatusReport) error {
 }
 
 func (cmd command) writeJSON(entry any) error {
-	output, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.stdout, string(output))
-	return nil
+	encoder := json.NewEncoder(cmd.stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(entry)
 }
 
 func statusJSONEntryFrom(report circuitrun.StatusReport) statusJSONEntry {
@@ -629,11 +606,7 @@ func callStatusJSONSliceFrom(calls []circuitb.CallStatus) []callStatusJSON {
 	return result
 }
 
-func (cmd command) advance(args []string) (bool, error) {
-	jsonMode, event, session, err := parseAdvanceArgs(args)
-	if err != nil {
-		return false, err
-	}
+func (cmd command) advance(event, session string) (bool, error) {
 	pending, err := cmd.prepareAdvance(session, event)
 	if err != nil {
 		return false, err
@@ -645,7 +618,7 @@ func (cmd command) advance(args []string) (bool, error) {
 	if err := cmd.commitAdvance(pending); err != nil {
 		return false, err
 	}
-	if jsonMode {
+	if cmd.json {
 		return !report.Allowed, cmd.writeAdvanceJSON(report)
 	}
 	if !report.Allowed {
@@ -661,35 +634,7 @@ func (cmd command) advance(args []string) (bool, error) {
 	return false, nil
 }
 
-func parseAdvanceArgs(args []string) (bool, string, string, error) {
-	var jsonMode bool
-	var event, session string
-	for _, arg := range args {
-		switch arg {
-		case jsonFlag:
-			jsonMode = true
-		default:
-			switch {
-			case event == "":
-				event = arg
-			case session == "":
-				session = arg
-			default:
-				return false, "", "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-		}
-	}
-	if event == "" {
-		return false, "", "", fmt.Errorf("expected one event and optional session, got %d arguments", len(args))
-	}
-	return jsonMode, event, session, nil
-}
-
-func (cmd command) unload(args []string) error {
-	jsonMode, session, err := parseUnloadArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) remove(session string) error {
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
@@ -697,29 +642,14 @@ func (cmd command) unload(args []string) error {
 	if err := runtime.UnloadByID(session); err != nil {
 		return err
 	}
-	if jsonMode {
-		return cmd.writeJSON(unloadJSONEntry{Session: session, SessionState: string(circuitrun.SessionUnloaded)})
+	if cmd.json {
+		return cmd.writeJSON(removeJSONEntry{Session: session, SessionState: string(circuitrun.SessionUnloaded)})
 	}
-	fmt.Fprintln(cmd.stdout, "unloaded")
+	fmt.Fprintln(cmd.stdout, "removed")
 	return nil
 }
 
-func parseUnloadArgs(args []string) (bool, string, error) {
-	jsonMode, session, err := parseJSONFlagWithOptionalArgument(args)
-	if err != nil {
-		return false, "", err
-	}
-	if session == "" {
-		return false, "", fmt.Errorf("expected one session argument, got %d arguments", len(args))
-	}
-	return jsonMode, session, nil
-}
-
-func (cmd command) stop(args []string) error {
-	jsonMode, session, err := parseStopArgs(args)
-	if err != nil {
-		return err
-	}
+func (cmd command) stop(session string) error {
 	runtime, err := circuitrun.Resume(cmd.workingDir())
 	if err != nil {
 		return err
@@ -727,18 +657,13 @@ func (cmd command) stop(args []string) error {
 	if session != "" {
 		err = runtime.StopByID(session)
 	} else {
-		err = runtime.Stop()
+		session, err = runtime.StopSession()
 	}
 	if err != nil {
 		return err
 	}
-	if jsonMode {
-		var report circuitrun.StatusReport
-		if session != "" {
-			report, err = runtime.StatusByID(session)
-		} else {
-			report, err = runtime.Status()
-		}
+	if cmd.json {
+		report, err := runtime.StatusByID(session)
 		if err != nil {
 			return err
 		}
@@ -746,27 +671,6 @@ func (cmd command) stop(args []string) error {
 	}
 	fmt.Fprintln(cmd.stdout, "stopped")
 	return nil
-}
-
-func parseStopArgs(args []string) (bool, string, error) {
-	return parseJSONFlagWithOptionalArgument(args)
-}
-
-func parseJSONFlagWithOptionalArgument(args []string) (bool, string, error) {
-	var jsonMode bool
-	var argument string
-	for _, arg := range args {
-		switch arg {
-		case jsonFlag:
-			jsonMode = true
-		default:
-			if argument != "" {
-				return false, "", fmt.Errorf("unexpected argument: %s", arg)
-			}
-			argument = arg
-		}
-	}
-	return jsonMode, argument, nil
 }
 
 func (cmd command) printStatusReports(reports []circuitrun.StatusReport) {
@@ -825,23 +729,6 @@ func formatBool(value bool) string {
 		return "TRUE"
 	}
 	return "FALSE"
-}
-
-func (cmd command) printUsage() {
-	fmt.Fprintln(cmd.stderr, "usage: circuit <command> [args]")
-	fmt.Fprintln(cmd.stderr, "")
-	fmt.Fprintln(cmd.stderr, "commands:")
-	fmt.Fprintln(cmd.stderr, "  list                        list available B machines")
-	fmt.Fprintln(cmd.stderr, "  load [--json] <machine>     validate machine and check bindings")
-	fmt.Fprintln(cmd.stderr, "  scaffold [--json] <machine> generate missing check bindings and false stubs")
-	fmt.Fprintln(cmd.stderr, "  start [--json] <machine>    start a circuit session")
-	fmt.Fprintln(cmd.stderr, "  status [--json] [session]   print circuit session status")
-	fmt.Fprintln(cmd.stderr, "  advance [--json] <event> [session]")
-	fmt.Fprintln(cmd.stderr, "                              apply Advance(event) to a circuit session")
-	fmt.Fprintln(cmd.stderr, "  stop [--json] [session]     stop a circuit session")
-	fmt.Fprintln(cmd.stderr, "  unload [--json] <session>   remove a stopped circuit session")
-	fmt.Fprintln(cmd.stderr, "  drive <machine> [--task s]  run a machine end-to-end against an agent backend")
-	fmt.Fprintln(cmd.stderr, "  version [--json]            print the circuit version")
 }
 
 func (cmd command) workingDir() string {
